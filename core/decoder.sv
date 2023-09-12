@@ -119,6 +119,10 @@ module decoder import ariane_pkg::*; #(
         ecall                       = 1'b0;
         ebreak                      = 1'b0;
         check_fprm                  = 1'b0;
+         // JITDomain - Default values
+        instruction_o.code_dom      = riscv::DOMI;   // code domain - inclusive by default
+        instruction_o.data_dom      = riscv::DOMI;   // data domain - inclusive by default
+        instruction_o.chg_dom       = 1'b0;          // flag chgdom - does not change by default
 
         if (~ex_i.valid) begin
             case (instr.rtype.opcode)
