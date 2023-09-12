@@ -95,6 +95,8 @@ module csr_regfile import ariane_pkg::*; #(
     // PMPs
     output riscv::pmpcfg_t [15:0] pmpcfg_o,   // PMP configuration containing pmpcfg for max 16 PMPs
     output logic [15:0][riscv::PLEN-3:0] pmpaddr_o,           // PMP addresses
+    // JITDomain - DMP
+    output riscv::dmpcfg_t [15:0] dmpcfg_o,                   // DMP configs, tied to pmp regions
     output logic [31:0] mcountinhibit_o
 );
     // internal signal to keep track of access exceptions
@@ -150,6 +152,9 @@ module csr_regfile import ariane_pkg::*; #(
     logic [63:0] cycle_q,     cycle_d;
     logic [63:0] instret_q,   instret_d;
 
+    // JITDomain - dmpcfg signals
+    riscv::dmpcfg_t [15:0]    dmpcfg_q,  dmpcfg_d;
+
     riscv::pmpcfg_t [15:0]    pmpcfg_q,  pmpcfg_d;
     logic [15:0][riscv::PLEN-3:0]        pmpaddr_q,  pmpaddr_d;
     logic [MHPMCounterNum+3-1:0] mcountinhibit_d,mcountinhibit_q;
@@ -170,6 +175,9 @@ module csr_regfile import ariane_pkg::*; #(
 
     assign pmpcfg_o = pmpcfg_q[15:0];
     assign pmpaddr_o = pmpaddr_q;
+
+    // JITDomain - assign output
+    assign dmpcfg_o = dmpcfg_q[15:0];
 
     riscv::fcsr_t fcsr_q, fcsr_d;
     // ----------------
@@ -444,6 +452,9 @@ module csr_regfile import ariane_pkg::*; #(
                         read_access_exception = 1'b1;
                     end
                 end
+                // JITDomain - dmp config read data
+                riscv::CSR_DMPCFG0:          csr_rdata = dmpcfg_q[riscv::XLEN/16-1:0];
+                riscv::CSR_DMPCFG1:          if (riscv::XLEN == 32) csr_rdata = dmpcfg_q[31:15]; else read_access_exception = 1'b1;
                 // PMPs
                 riscv::CSR_PMPCFG0:          csr_rdata = pmpcfg_q[riscv::XLEN/8-1:0];
                 riscv::CSR_PMPCFG1:          if (riscv::XLEN == 32) csr_rdata = pmpcfg_q[7:4]; else read_access_exception = 1'b1;
@@ -568,6 +579,9 @@ module csr_regfile import ariane_pkg::*; #(
 
         pmpcfg_d                = pmpcfg_q;
         pmpaddr_d               = pmpaddr_q;
+
+        // JITDomain - Propagate value
+        dmpcfg_d                = dmpcfg_q;
 
         // check for correct access rights and that we are writing
         if (csr_we) begin
@@ -845,6 +859,16 @@ module csr_regfile import ariane_pkg::*; #(
                         acc_cons_d  = {{riscv::XLEN-1{1'b0}}, csr_wdata[0]}; // enable bit
                     end else begin
                         update_access_exception = 1'b1;
+                    end
+                end
+                // JITDomain - DMP write update
+                // TODO: Check correct update and sizing
+                riscv::CSR_DMPCFG0:    for (int i = 0; i < (riscv::XLEN/4); i++) if (!dmpcfg_q[i].locked) dmpcfg_d[i]  = csr_wdata[i*4+:4];
+                riscv::CSR_DMPCFG1: begin
+                    if (riscv::XLEN == 32) begin
+                        for (int i = 0; i < 8; i++) if (!dmpcfg_q[i+8].locked) dmpcfg_d[i+8]  = csr_wdata[i*4+:4];
+                    end else begin
+                      update_access_exception = 1'b1;
                     end
                 end
                 // PMP locked logic
@@ -1398,6 +1422,8 @@ module csr_regfile import ariane_pkg::*; #(
             // pmp
             pmpcfg_q               <= '0;
             pmpaddr_q              <= '0;
+            // JITDomain - dmp
+            dmpcfg_q               <= '0;
         end else begin
             priv_lvl_q             <= priv_lvl_d;
             // floating-point registers
@@ -1450,9 +1476,11 @@ module csr_regfile import ariane_pkg::*; #(
                         pmpcfg_q[i] <= pmpcfg_q[i];
                     end
                     pmpaddr_q[i] <= pmpaddr_d[i];
+                    dmpcfg_q[i] <= dmpcfg_d[i]; // JITDomain - propagate value to structures
                 end else begin
                     pmpcfg_q[i] <= '0;
                     pmpaddr_q[i] <= '0;
+                    dmpcfg_q[i] <= '0;          // JITDomain - pass 0 if not used
                 end
             end
         end
