@@ -373,6 +373,7 @@ module cva6 import ariane_pkg::*; #(
   logic                     acc_cons_en_csr;
   logic                     debug_mode;
   logic                     single_step_csr_commit;
+  riscv::dmpcfg_t [15:0]    dmpcfg;
   riscv::pmpcfg_t [15:0]    pmpcfg;
   logic [15:0][riscv::PLEN-3:0] pmpaddr;
   logic [31:0]              mcountinhibit_csr_perf;
@@ -815,6 +816,7 @@ module cva6 import ariane_pkg::*; #(
     .perf_data_o            ( data_csr_perf                 ),
     .perf_data_i            ( data_perf_csr                 ),
     .perf_we_o              ( we_csr_perf                   ),
+    .dmpcfg_o               ( dmpcfg                        ),
     .pmpcfg_o               ( pmpcfg                        ),
     .pmpaddr_o              ( pmpaddr                       ),
     .mcountinhibit_o        ( mcountinhibit_csr_perf        ),
