@@ -256,6 +256,11 @@ package riscv;
     localparam OpcodeRsrvd3    = 7'b11_101_11;
     localparam OpcodeCustom3   = 7'b11_110_11;
 
+    // JITDomain Aliases for opcodes
+    localparam OpcodeLoad1     = OpcodeCustom0; // custom0 for all loads
+    localparam OpcodeStore1    = OpcodeCustom1; // custom1 for all stores
+    localparam OpcodeChgDom    = OpcodeCustom2; // custom2 for domain changes
+
     // RV64C/RV32C listings:
     // Quadrant 0
     localparam OpcodeC0             = 2'b00;
@@ -453,6 +458,11 @@ package riscv;
         CSR_PMPADDR13      = 12'h3BD,
         CSR_PMPADDR14      = 12'h3BE,
         CSR_PMPADDR15      = 12'h3BF,
+
+        CSR_DMPCFG0        = 12'h3F0,  // JITDomain - dmp config0
+        CSR_DMPCFG1        = 12'h3F1,  // JITDomain - dmp config1
+        CSR_CURDOM         = 12'h3F3,  // JITDomain - current domain
+
         CSR_MVENDORID      = 12'hF11,
         CSR_MARCHID        = 12'hF12,
         CSR_MIMPID         = 12'hF13,
@@ -667,6 +677,25 @@ package riscv;
         logic [2:0]   frm;       // float rounding mode
         logic [4:0]   fflags;    // float exception flags
     } fcsr_t;
+
+    // JITDomain sizing
+    localparam NR_DOM = 4; // base, jit, shadow stack, and inclusive
+    localparam DOM_BITS = $clog2(NR_DOM);
+
+    // JITDomain - Packed struct of a config (the associated domain)
+    typedef enum logic [DOM_BITS-1:0] {
+        DOM0 = 2'b00,
+        DOM1 = 2'b01,
+        DOM2 = 2'b10,
+        DOMI = 2'b11
+    } dmp_domain_t;
+
+    // JITDomain - packed struct of a DMP configuration register (4bit)
+    typedef struct packed {
+        logic           locked;  // lock this configuration
+        dmp_domain_t    domain;  // associated domain number   
+    } dmpcfg_t;
+
 
     // PMP
     typedef enum logic [1:0] {
