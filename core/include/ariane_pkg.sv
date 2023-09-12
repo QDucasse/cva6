@@ -412,7 +412,9 @@ package ariane_pkg;
                                // Accelerator operations
                                ACCEL_OP, ACCEL_OP_FS1, ACCEL_OP_FD, ACCEL_OP_LOAD, ACCEL_OP_STORE,
                                // Zicond instruction
-                               CZERO_EQZ, CZERO_NEZ
+                               CZERO_EQZ, CZERO_NEZ,
+                               // JITDomain - LSU duplicated functions
+                               LD1, SD1, LW1, LWU1, SW1, LH1, LHU1, SH1, LB1, SB1, LBU1, LS, SS, CHDOM, RETDOM
                              } fu_op;
 
     typedef struct packed {
@@ -560,6 +562,11 @@ package ariane_pkg;
         logic [(riscv::XLEN/8)-1:0] lsu_wmask;   // information needed by RVFI
         riscv::xlen_t               lsu_wdata;   // information needed by RVFI
         logic                       vfp;         // is this a vector floating-point instruction?
+
+                                                 // JITDomain related fields
+        logic [riscv::DOM_BITS-1:0] code_dom;    // associated code domain        (should be executed from)
+        logic [riscv::DOM_BITS-1:0] data_dom;    // associated data domain        (should access data in)
+        logic                       chg_dom;     // flag to change internal state (should change domain)
     } scoreboard_entry_t;
 
     // ---------------
