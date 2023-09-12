@@ -780,6 +780,7 @@ module decoder import ariane_pkg::*; #(
                     imm_select = SIMM;
                     instruction_o.rs1[4:0]  = instr.stype.rs1;
                     instruction_o.rs2[4:0]  = instr.stype.rs2;
+                    instruction_o.data_dom  = riscv::DOM0; // JITDomain - Can only access data from domain 0
                     // determine store size
                     unique case (instr.stype.funct3)
                         3'b000: instruction_o.op  = ariane_pkg::SB;
@@ -796,6 +797,7 @@ module decoder import ariane_pkg::*; #(
                     imm_select = IIMM;
                     instruction_o.rs1[4:0] = instr.itype.rs1;
                     instruction_o.rd[4:0]  = instr.itype.rd;
+                    instruction_o.data_dom  = riscv::DOM0; // JITDomain - Can only access data from domain 0
                     // determine load size and signed type
                     unique case (instr.itype.funct3)
                         3'b000: instruction_o.op  = ariane_pkg::LB;
@@ -810,6 +812,88 @@ module decoder import ariane_pkg::*; #(
                         default: illegal_instr = 1'b1;
                     endcase
                 end
+
+
+                // -------------------------------------
+                // JITDomain - Duplicated instructions
+                // -------------------------------------
+
+                // JITDomain - Duplicated store instructions
+                riscv::OpcodeStore1: begin
+                    instruction_o.fu  = STORE;
+                    imm_select = SIMM;
+                    instruction_o.rs1[4:0]  = instr.stype.rs1;
+                    instruction_o.rs2[4:0]  = instr.stype.rs2;
+                    instruction_o.code_dom  = riscv::DOM1;  // Executed from domain 1
+                    instruction_o.data_dom  = riscv::DOM1;  // Accesses data in domain 1
+                    // determine store size
+                    unique case (instr.stype.funct3)
+                        3'b000: instruction_o.op  = ariane_pkg::SB1;
+                        3'b001: instruction_o.op  = ariane_pkg::SH1;
+                        3'b010: instruction_o.op  = ariane_pkg::SW1;
+                        3'b011: if (riscv::XLEN==64) instruction_o.op  = ariane_pkg::SD1;
+                                else illegal_instr = 1'b1;
+                        3'b111: begin
+                            if (riscv::XLEN==64) instruction_o.op  = ariane_pkg::SS;
+                            else illegal_instr = 1'b1;
+                            instruction_o.data_dom  = riscv::DOM2; // Accesses data in domain 2
+                        end
+                        default: illegal_instr = 1'b1;
+                    endcase
+                end
+
+                // JITDomain - Duplicated load instructions
+                riscv::OpcodeLoad1: begin
+                    instruction_o.fu  = LOAD;
+                    imm_select = IIMM;
+                    instruction_o.rs1[4:0] = instr.itype.rs1;
+                    instruction_o.rd[4:0]  = instr.itype.rd;
+                    instruction_o.code_dom  = riscv::DOM1;  // Executed from domain 1
+                    instruction_o.data_dom  = riscv::DOM1;  // Accesses data in domain 1
+                    // determine load size and signed type
+                    unique case (instr.itype.funct3)
+                        3'b000: instruction_o.op  = ariane_pkg::LB1;
+                        3'b001: instruction_o.op  = ariane_pkg::LH1;
+                        3'b010: instruction_o.op  = ariane_pkg::LW1;
+                        3'b100: instruction_o.op  = ariane_pkg::LBU1;
+                        3'b101: instruction_o.op  = ariane_pkg::LHU1;
+                        3'b110: if (riscv::XLEN==64) instruction_o.op  = ariane_pkg::LWU1;
+                                else illegal_instr = 1'b1;
+                        3'b011: if (riscv::XLEN==64) instruction_o.op  = ariane_pkg::LD1;
+                                else illegal_instr = 1'b1;
+                        3'b111: begin
+                            if (riscv::XLEN==64) instruction_o.op  = ariane_pkg::LS;
+                            else illegal_instr = 1'b1;
+                            instruction_o.data_dom  = riscv::DOM2; // Accesses data in domain 2
+                        end
+                        default: illegal_instr = 1'b1;
+                    endcase
+                end
+
+                // JITDomain - Duplicated JALR (ChgDom) 
+                riscv::OpcodeChgDom: begin
+                    instruction_o.fu        = CTRL_FLOW;
+                    instruction_o.op        = ariane_pkg::CHDOM;
+                    instruction_o.rs1[4:0]  = instr.itype.rs1;
+                    imm_select              = IIMM;
+                    instruction_o.rd[4:0]   = instr.itype.rd;
+                    is_control_flow_instr_o = 1'b1;
+                    instruction_o.chg_dom   = 1'b1;        // JITDomain - Should change domain
+                    unique case (instr.itype.funct3)
+                        3'b000: begin
+                            instruction_o.op  = ariane_pkg::RETDOM;
+                            instruction_o.code_dom  = riscv::DOM1; // JITDomain - Executed from domain 1
+                            instruction_o.data_dom  = riscv::DOM0; // JITDomain -Arrives in domain 0
+                        end
+                        3'b001: begin
+                            instruction_o.op  = ariane_pkg::CHDOM;
+                            instruction_o.code_dom  = riscv::DOM0; // JITDomain - Executed from domain 0
+                            instruction_o.data_dom  = riscv::DOM1; // JITDomain -Arrives in domain 1
+                        end
+                    endcase
+                end
+
+
 
                 // --------------------------------
                 // Floating-Point Load/store
