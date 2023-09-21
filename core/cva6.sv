@@ -373,9 +373,11 @@ module cva6 import ariane_pkg::*; #(
   logic                     acc_cons_en_csr;
   logic                     debug_mode;
   logic                     single_step_csr_commit;
-  riscv::dmpcfg_t [15:0]    dmpcfg;
   riscv::pmpcfg_t [15:0]    pmpcfg;
   logic [15:0][riscv::PLEN-3:0] pmpaddr;
+  // JITDomain
+  riscv::dmp_domain_t       curdom;
+  riscv::dmpcfg_t [15:0]    dmpcfg;
   logic [31:0]              mcountinhibit_csr_perf;
   // ----------------------------
   // Performance Counters <-> *
@@ -708,6 +710,9 @@ module cva6 import ariane_pkg::*; #(
     // PMP
     .pmpcfg_i               ( pmpcfg                      ),
     .pmpaddr_i              ( pmpaddr                     ),
+    // JITDomain
+    .dmpcfg_i               ( dmpcfg                      ),
+    .curdom_i               ( curdom                      ),
     //RVFI
     .lsu_addr_o             ( lsu_addr                    ),
     .mem_paddr_o            ( mem_paddr                   ),

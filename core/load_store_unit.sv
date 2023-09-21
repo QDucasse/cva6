@@ -73,6 +73,9 @@ module load_store_unit import ariane_pkg::*; #(
     // PMP
     input  riscv::pmpcfg_t [15:0]    pmpcfg_i,
     input  logic [15:0][riscv::PLEN-3:0] pmpaddr_i,
+    // JITDomain
+    input  riscv::dmpcfg_t [15:0]    dmpcfg_i,
+    input  riscv::dmp_domain_t       curdom_i,
 
     //RVFI
     output [riscv::VLEN-1:0]         lsu_addr_o,
@@ -165,6 +168,9 @@ module load_store_unit import ariane_pkg::*; #(
             .icache_areq_o          ( icache_areq_o          ),
             .pmpcfg_i,
             .pmpaddr_i,
+            // JITDomain
+            .dmpcfg_i,
+            .curdom_i,
             .*
         );
     end else if (MMU_PRESENT && (riscv::XLEN == 32)) begin : gen_mmu_sv32
@@ -194,6 +200,9 @@ module load_store_unit import ariane_pkg::*; #(
             .icache_areq_o          ( icache_areq_o          ),
             .pmpcfg_i,
             .pmpaddr_i,
+            // JITDomain
+            .dmpcfg_i,
+            .curdom_i,
             .*
         );
     end else begin : gen_no_mmu
