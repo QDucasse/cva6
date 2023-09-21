@@ -22,9 +22,11 @@ module pmp #(
     input logic [PLEN-1:0] addr_i,
     input riscv::pmp_access_t access_type_i,
     input riscv::priv_lvl_t priv_lvl_i,
+    input riscv::dmp_domain_t curdom_i,            // JITDomain
     // Configuration
     input logic [15:0][PMP_LEN-1:0] conf_addr_i,
-    input riscv::pmpcfg_t [15:0] conf_i,
+    input riscv::pmpcfg_t [15:0] pmpconf_i,
+    input riscv::dmpcfg_t [15:0] dmpconf_i,        // JITDomain
     // Output
     output logic allow_o
 );
@@ -45,7 +47,7 @@ module pmp #(
                 .addr_i           ( addr_i                         ),
                 .conf_addr_i      ( conf_addr_i[i]                 ),
                 .conf_addr_prev_i ( conf_addr_prev                 ),
-                .conf_addr_mode_i ( conf_i[i].addr_mode            ),
+                .conf_addr_mode_i ( pmpconf_i[i].addr_mode         ),
                 .match_o          ( match[i]                       )
             );
         end
@@ -57,9 +59,9 @@ module pmp #(
             for (i = 0; i < NR_ENTRIES; i++) begin
                 // either we are in S or U mode or the config is locked in which
                 // case it also applies in M mode
-                if (priv_lvl_i != riscv::PRIV_LVL_M || conf_i[i].locked) begin
+                if (priv_lvl_i != riscv::PRIV_LVL_M || (pmpconf_i[i].locked && dmpconf_i[i].locked)) begin
                     if (match[i]) begin
-                        if ((access_type_i & conf_i[i].access_type) != access_type_i) allow_o = 1'b0;
+                        if (((access_type_i & pmpconf_i[i].access_type) != access_type_i) || ((curdom_i & dmpconf_i[i].domain) != curdom_i)) allow_o = 1'b0;
                         else allow_o = 1'b1;
                         break;
                     end
@@ -81,7 +83,7 @@ module pmp #(
         if(priv_lvl_i == riscv::PRIV_LVL_M) begin
             no_locked = 1'b1;
             for (int i = 0; i < NR_ENTRIES; i++) begin
-                if (conf_i[i].locked && conf_i[i].addr_mode != riscv::OFF) begin
+                if (pmpconf_i[i].locked && dmpconf_i[i].locked && pmpconf_i[i].addr_mode != riscv::OFF) begin
                     no_locked &= 1'b0;
                 end else no_locked &= 1'b1;
             end

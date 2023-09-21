@@ -70,6 +70,9 @@ module cva6_ptw_sv32 import ariane_pkg::*; #(
     // PMP
     input  riscv::pmpcfg_t [15:0]   pmpcfg_i,
     input  logic [15:0][riscv::PLEN-3:0] pmpaddr_i,
+    // JITDomain
+    input  riscv::dmpcfg_t [15:0]   dmpcfg_i,
+    input  riscv::dmp_domain_t      curdom_i,
     output logic [riscv::PLEN-1:0]  bad_paddr_o
 
 );
@@ -156,7 +159,10 @@ module cva6_ptw_sv32 import ariane_pkg::*; #(
         .access_type_i ( riscv::ACCESS_READ ),
         // Configuration
         .conf_addr_i   ( pmpaddr_i          ),
-        .conf_i        ( pmpcfg_i           ),
+        .pmpconf_i     ( pmpcfg_i           ),
+        // JITDomain
+        .dmpconf_i     ( dmpcfg_i           ),
+        .curdom_i      ( riscv::DOMI        ),
         .allow_o       ( allow_access       )
     );
 
