@@ -452,8 +452,8 @@ module csr_regfile import ariane_pkg::*; #(
                     end
                 end
                 // JITDomain - dmp config read data
-                riscv::CSR_DMPCFG0:          csr_rdata = dmpcfg_q[riscv::XLEN/16-1:0];
-                riscv::CSR_DMPCFG1:          if (riscv::XLEN == 32) csr_rdata = dmpcfg_q[31:15]; else read_access_exception = 1'b1;
+                riscv::CSR_DMPCFG0:          csr_rdata = dmpcfg_q[riscv::XLEN/4-1:0];
+                riscv::CSR_DMPCFG1:          if (riscv::XLEN == 32) csr_rdata = dmpcfg_q[15:7]; else read_access_exception = 1'b1;
                 // PMPs
                 riscv::CSR_PMPCFG0:          csr_rdata = pmpcfg_q[riscv::XLEN/8-1:0];
                 riscv::CSR_PMPCFG1:          if (riscv::XLEN == 32) csr_rdata = pmpcfg_q[7:4]; else read_access_exception = 1'b1;
@@ -932,7 +932,10 @@ module csr_regfile import ariane_pkg::*; #(
         mstatus_d.sd   = (mstatus_q.xs == riscv::Dirty) | (mstatus_q.fs == riscv::Dirty);
 
         // reserve PMPCFG bits 5 and 6 (hardwire to 0)
-        for (int i = 0; i < CVA6Cfg.NrPMPEntries; i++) pmpcfg_d[i].reserved = 2'b0;
+        for (int i = 0; i < CVA6Cfg.NrPMPEntries; i++) begin
+            pmpcfg_d[i].reserved = 2'b0;
+            dmpcfg_d[i].reserved = 1'b0;
+        end
 
         // write the floating point status register
         if (CVA6Cfg.FpPresent && csr_write_fflags_i) begin
