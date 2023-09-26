@@ -453,8 +453,8 @@ module csr_regfile import ariane_pkg::*; #(
                     end
                 end
                 // JITDomain - dmp config read data
-                riscv::CSR_DMPCFG0:          csr_rdata = dmpcfg_q[riscv::XLEN/16-1:0];
-                riscv::CSR_DMPCFG1:          if (riscv::XLEN == 32) csr_rdata = dmpcfg_q[31:15]; else read_access_exception = 1'b1;
+                riscv::CSR_DMPCFG0:          csr_rdata = dmpcfg_q[riscv::XLEN/4-1:0];
+                riscv::CSR_DMPCFG1:          if (riscv::XLEN == 32) csr_rdata = dmpcfg_q[15:7]; else read_access_exception = 1'b1;
                 // PMPs
                 riscv::CSR_PMPCFG0:          csr_rdata = pmpcfg_q[riscv::XLEN/8-1:0];
                 riscv::CSR_PMPCFG1:          if (riscv::XLEN == 32) csr_rdata = pmpcfg_q[7:4]; else read_access_exception = 1'b1;
@@ -934,6 +934,9 @@ module csr_regfile import ariane_pkg::*; #(
 
         // reserve PMPCFG bits 5 and 6 (hardwire to 0)
         for (int i = 0; i < NrPMPEntries; i++) pmpcfg_d[i].reserved = 2'b0;
+        
+        // reserve DMPCFG bit 2 (hardwire to 0)
+        for (int i = 0; i < 4; i++) dmpcfg_d[i].reserved = 2'b0;
 
         // write the floating point status register
         if (csr_write_fflags_i) begin

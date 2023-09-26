@@ -447,7 +447,7 @@ module mmu import ariane_pkg::*; #(
         .pmpconf_i     ( pmpcfg_i            ),
         // JITDomain
         .dmpconf_i     ( dmpcfg_i            ),
-        .curdom_i      ( riscv::DOMI         ),
+        .curdom_i      ( riscv::DOM0         ),
         .allow_o       ( pmp_data_allow      )
     );
 

@@ -162,7 +162,7 @@ module cva6_ptw_sv32 import ariane_pkg::*; #(
         .pmpconf_i     ( pmpcfg_i           ),
         // JITDomain
         .dmpconf_i     ( dmpcfg_i           ),
-        .curdom_i      ( riscv::DOMI        ),
+        .curdom_i      ( riscv::DOM0        ),
         .allow_o       ( allow_access       )
     );
 

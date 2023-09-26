@@ -678,12 +678,8 @@ package riscv;
         logic [4:0]   fflags;    // float exception flags
     } fcsr_t;
 
-    // JITDomain sizing
-    localparam NR_DOM = 4; // base, jit, shadow stack, and inclusive
-    localparam DOM_BITS = $clog2(NR_DOM);
-
-    // JITDomain - Packed struct of a config (the associated domain)
-    typedef enum logic [DOM_BITS-1:0] {
+    // JITDomain - Available domains
+    typedef enum logic [1:0] {
         DOM0 = 2'b00,
         DOM1 = 2'b01,
         DOM2 = 2'b10,
@@ -693,6 +689,7 @@ package riscv;
     // JITDomain - packed struct of a DMP configuration register (4bit)
     typedef struct packed {
         logic           locked;  // lock this configuration
+        logic           reserved;
         dmp_domain_t    domain;  // associated domain number   
     } dmpcfg_t;
 
