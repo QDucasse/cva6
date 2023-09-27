@@ -59,9 +59,15 @@ module pmp #(
             for (i = 0; i < NR_ENTRIES; i++) begin
                 // either we are in S or U mode or the config is locked in which
                 // case it also applies in M mode
-                if (priv_lvl_i != riscv::PRIV_LVL_M || (pmpconf_i[i].locked && dmpconf_i[i].locked)) begin
+                if (priv_lvl_i != riscv::PRIV_LVL_M || pmpconf_i[i].locked) begin
                     if (match[i]) begin
-                        if (((access_type_i & pmpconf_i[i].access_type) != access_type_i) || ((curdom_i & dmpconf_i[i].domain) != curdom_i)) allow_o = 1'b0;
+                        if (
+                            ((access_type_i & pmpconf_i[i].access_type) != access_type_i) 
+                            || (
+                                (dmpconf_i[i].domain != riscv::DOMI)
+                                & ((curdom_i & dmpconf_i[i].domain) != dmpconf_i[i].domain)
+                            )
+                        ) allow_o = 1'b0;
                         else allow_o = 1'b1;
                         break;
                     end

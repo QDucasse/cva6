@@ -157,7 +157,7 @@ module ptw import ariane_pkg::*; #(
         .pmpconf_i     ( pmpcfg_i           ),
         // JITDomain
         .dmpconf_i     ( dmpcfg_i           ),
-        .curdom_i      ( riscv::DOM0        ),
+        .curdom_i      ( riscv::DOMI        ),
         .allow_o       ( allow_access       )
     );
 

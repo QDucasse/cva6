@@ -361,7 +361,7 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
         .pmpconf_i     ( pmpcfg_i                  ),
         // JITDomain
         .dmpconf_i     ( dmpcfg_i                  ),
-        .curdom_i      ( riscv::DOM0               ), // JITDomain - should be replaced with real curdom val
+        .curdom_i      ( riscv::DOMI               ), // JITDomain - should be replaced with real curdom val
         .allow_o       ( pmp_instr_allow           )
     );
 
@@ -505,7 +505,7 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
         .pmpconf_i     ( pmpcfg_i            ),
         // JITDomain
         .dmpconf_i     ( dmpcfg_i            ),
-        .curdom_i      ( riscv::DOMI         ),  // JITDomain - should be replaced with real curdom val
+        .curdom_i      ( riscv::DOMI         ),  // JITDomain WIP - should be replaced with real curdom val
         .allow_o       ( pmp_data_allow      )
     );
 
