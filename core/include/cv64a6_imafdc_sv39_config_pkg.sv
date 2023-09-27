@@ -25,9 +25,11 @@ package cva6_config_pkg;
 
     localparam CVA6ConfigCvxifEn = 1;
     localparam CVA6ConfigCExtEn = 1;
+    localparam CVA6ConfigZcbExtEn = 1;
     localparam CVA6ConfigAExtEn = 1;
     localparam CVA6ConfigBExtEn = 1;
     localparam CVA6ConfigVExtEn = 0;
+    localparam CVA6ConfigZiCondExtEn = 1;
 
     localparam CVA6ConfigAxiIdWidth = 4;
     localparam CVA6ConfigAxiAddrWidth = 64;
@@ -89,8 +91,10 @@ package cva6_config_pkg;
       bit'(CVA6ConfigAExtEn),                // RVA
       bit'(CVA6ConfigVExtEn),                // RVV
       bit'(CVA6ConfigCExtEn),                // RVC
+      bit'(CVA6ConfigZcbExtEn),              // RVZCB
       bit'(CVA6ConfigFVecEn),                // XFVec
       bit'(CVA6ConfigCvxifEn),               // CvxifEn
+      bit'(CVA6ConfigZiCondExtEn),           // RCONDEXT
       // Extended
       bit'(0),           // RVF
       bit'(0),           // RVD
@@ -103,7 +107,9 @@ package cva6_config_pkg;
       bit'(0),           // XF8Vec
       unsigned'(0),      // NrRgprPorts
       unsigned'(0),      // NrWbPorts
-      bit'(0)            // EnableAccelerator
+      bit'(0),           // EnableAccelerator
+      64'h800,           // HaltAddress
+      64'h808            // ExceptionAddress            // EnableAccelerator
     } ;
 
 endpackage

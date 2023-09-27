@@ -203,32 +203,32 @@ module csr_regfile import ariane_pkg::*; #(
         if (csr_read) begin
             unique case (csr_addr.address)
                 riscv::CSR_FFLAGS: begin
-                    if (mstatus_q.fs == riscv::Off) begin
-                        read_access_exception = 1'b1;
-                    end else begin
+                    if(CVA6Cfg.FpPresent) begin
                         csr_rdata = {{riscv::XLEN-5{1'b0}}, fcsr_q.fflags};
+                    end else begin
+                        read_access_exception = 1'b1;
                     end
                 end
                 riscv::CSR_FRM: begin
-                    if (mstatus_q.fs == riscv::Off) begin
-                        read_access_exception = 1'b1;
-                    end else begin
+                    if(CVA6Cfg.FpPresent) begin
                         csr_rdata = {{riscv::XLEN-3{1'b0}}, fcsr_q.frm};
+                    end else begin
+                        read_access_exception = 1'b1;
                     end
                 end
                 riscv::CSR_FCSR: begin
-                    if (mstatus_q.fs == riscv::Off) begin
-                        read_access_exception = 1'b1;
-                    end else begin
+                    if(CVA6Cfg.FpPresent) begin
                         csr_rdata = {{riscv::XLEN-8{1'b0}}, fcsr_q.frm, fcsr_q.fflags};
+                    end else begin
+                        read_access_exception = 1'b1;
                     end
                 end
                 // non-standard extension
                 riscv::CSR_FTRAN: begin
-                    if (mstatus_q.fs == riscv::Off) begin
-                        read_access_exception = 1'b1;
-                    end else begin
+                    if(CVA6Cfg.FpPresent) begin
                         csr_rdata = {{riscv::XLEN-7{1'b0}}, fcsr_q.fprec};
+                    end else begin
+                        read_access_exception = 1'b1;
                     end
                 end
                 // debug registers
@@ -588,43 +588,43 @@ module csr_regfile import ariane_pkg::*; #(
             unique case (csr_addr.address)
                 // Floating-Point
                 riscv::CSR_FFLAGS: begin
-                    if (mstatus_q.fs == riscv::Off) begin
-                        update_access_exception = 1'b1;
-                    end else begin
+                    if(CVA6Cfg.FpPresent) begin
                         dirty_fp_state_csr = 1'b1;
                         fcsr_d.fflags = csr_wdata[4:0];
                         // this instruction has side-effects
                         flush_o = 1'b1;
+                    end else begin
+                        update_access_exception = 1'b1;
                     end
                 end
                 riscv::CSR_FRM: begin
-                    if (mstatus_q.fs == riscv::Off) begin
-                        update_access_exception = 1'b1;
-                    end else begin
+                    if(CVA6Cfg.FpPresent) begin
                         dirty_fp_state_csr = 1'b1;
                         fcsr_d.frm    = csr_wdata[2:0];
                         // this instruction has side-effects
                         flush_o = 1'b1;
+                    end else begin
+                        update_access_exception = 1'b1;
                     end
                 end
                 riscv::CSR_FCSR: begin
-                    if (mstatus_q.fs == riscv::Off) begin
-                        update_access_exception = 1'b1;
-                    end else begin
+                    if(CVA6Cfg.FpPresent) begin
                         dirty_fp_state_csr = 1'b1;
                         fcsr_d[7:0] = csr_wdata[7:0]; // ignore writes to reserved space
                         // this instruction has side-effects
                         flush_o = 1'b1;
+                    end else begin
+                        update_access_exception = 1'b1;
                     end
                 end
                 riscv::CSR_FTRAN: begin
-                    if (mstatus_q.fs == riscv::Off) begin
-                        update_access_exception = 1'b1;
-                    end else begin
+                    if(CVA6Cfg.FpPresent) begin
                         dirty_fp_state_csr = 1'b1;
                         fcsr_d.fprec = csr_wdata[6:0]; // ignore writes to reserved space
                         // this instruction has side-effects
                         flush_o = 1'b1;
+                    end else begin
+                        update_access_exception = 1'b1;
                     end
                 end
                 // debug CSR
@@ -939,7 +939,7 @@ module csr_regfile import ariane_pkg::*; #(
         for (int i = 0; i < 4; i++) dmpcfg_d[i].reserved = 2'b0;
 
         // write the floating point status register
-        if (csr_write_fflags_i) begin
+        if (CVA6Cfg.FpPresent && csr_write_fflags_i) begin
             fcsr_d.fflags = csr_wdata_i[4:0] | fcsr_q.fflags;
         end
 
@@ -1064,7 +1064,7 @@ module csr_regfile import ariane_pkg::*; #(
                 endcase
                 // save PC of next this instruction e.g.: the next one to be executed
                 dpc_d = {{riscv::XLEN-riscv::VLEN{pc_i[riscv::VLEN-1]}},pc_i};
-                dcsr_d.cause = ariane_dm_pkg::CauseBreakpoint;
+                dcsr_d.cause = ariane_pkg::CauseBreakpoint;
             end
 
             // we've got a debug request
@@ -1077,7 +1077,7 @@ module csr_regfile import ariane_pkg::*; #(
                 // jump to the base address
                 set_debug_pc_o = 1'b1;
                 // save the cause as external debug request
-                dcsr_d.cause = ariane_dm_pkg::CauseRequest;
+                dcsr_d.cause = ariane_pkg::CauseRequest;
             end
 
             // single step enable and we just retired an instruction
@@ -1099,7 +1099,7 @@ module csr_regfile import ariane_pkg::*; #(
                 end
                 debug_mode_d = 1'b1;
                 set_debug_pc_o = 1'b1;
-                dcsr_d.cause = ariane_dm_pkg::CauseSingleStep;
+                dcsr_d.cause = ariane_pkg::CauseSingleStep;
             end
         end
         // go in halt-state again when we encounter an exception
@@ -1296,7 +1296,7 @@ module csr_regfile import ariane_pkg::*; #(
 
         // if we are in debug mode jump to a specific address
         if (debug_mode_q) begin
-            trap_vector_base_o = DmBaseAddress[riscv::VLEN-1:0] + ariane_dm_pkg::ExceptionAddress[riscv::VLEN-1:0];
+            trap_vector_base_o = DmBaseAddress[riscv::VLEN-1:0] + CVA6Cfg.ExceptionAddress[riscv::VLEN-1:0];
         end
 
         // check if we are in vectored mode, if yes then do BASE + 4 * cause we

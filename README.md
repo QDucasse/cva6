@@ -129,31 +129,59 @@ This BSP is used by both `core` testbench and `uvmt_cva6` UVM verification envir
 There are README files in each directory with additional information.
 
 #### Prerequisites
-To execute tests on CVA6 core, you need a RISC-V toolchain.
 
-Be aware that only gcc 11.1.0 or newer are supported in core-v-verif repository.
-To build and install riscv gcc compiler in local, you can use the following commands :
+In brief, you will need:
+- a native C/C++ development environment to build simulation tools and models;
+- a RISC-V toolchain to build the CVA6 test programs;
+- optionally, an EDA tool that supports building and running simulation models of designs expressed in SystemVerilog.
+
+To build the open-source tools used by CVA6 and to run CVA6 simulations, you will need
+a native compilation toolchain for C and C++.  Such toolchains are available on virtually
+all Linux distributions as pre-installed or optional packages.   If unsure, ask your system
+administrator to install one on your system.
+
+To build test programs for the CVA6 core, you need a RISC-V toolchain.
+For GCC-based toolchains, only GCC versions above 11.1.0 are supported;
+it is recommended to use GCC 13.1.0 or above.
+
+You can use a pre-built toolchain (available for most common Linux/macOS
+distributions from a variety of providers) or build one from scratch using
+publicly available source code repositiores.  The second approach may prove
+necessary on older or unsupported Linux installations.
+
+To use a pre-built RISC-V toolchain, download and install the package(s) for your
+Linux distribution as per instructions from the toolchain provider, and set the
+`RISCV` environment variable to the installation location of the toolchain:
 
 ```sh
-git clone https://github.com/riscv-collab/riscv-gnu-toolchain
-cd riscv-gnu-toolchain
-git clone https://github.com/gcc-mirror/gcc -b releases/gcc-13 gcc-13
-./configure –prefix:/path/to/installation/directory --with-multilib-generator="rv32e-ilp32e--;rv32i-ilp32--;rv32im-ilp32--;rv32iac-ilp32--;rv32imac-ilp32--;rv32imafc-ilp32f--;rv32imafdc-ilp32d--;rv64i-lp64--;rv64ic-lp64--;rv64iac-lp64--;rv64imac-lp64--;rv64imafdc-lp64d--;rv64im-lp64--;" --with-gcc-src=`pwd`/gcc-13
-make –j32
+# Set environment variable RISCV to the location of the installed toolchain.
+export RISCV=/path/to/toolchain/installation/directory
 ```
 
-These commands will install the riscv gcc 13.1.0 compiler which is the latest version.
-Once running the previous commands, your environment must be updated with :
+To build and install RISC-V GCC toolchain locally, you can use the toolchain generation scripts
+located under `util/gcc-toolchain-builder`.  Please make sure beforehand that you have
+installed all the required *toolchain build* dependencies (see
+[the toolchain README file](file:util/gcc-toolchain-builder/README.md).)
 
 ```sh
-export RISCV=/path/to/installation/directory
-export RISCV_PREFIX=$RISCV/bin/riscv-none-
-export RISCV_GCC=$RISCV_PREFIXgcc
-export CV_SW_PREFIX=riscv-none-elf-
+# Set environment variable RISCV to the desired installation location.
+# The toolchain can be installed in any user-writable directory.
+export RISCV=/path/to/toolchain/installation/directory
+
+# Get the source code of toolchain components from public repositiories.
+cd util/gcc-toolchain-builder
+bash ./get-toolchain.sh
+
+# For the build prerequisites, see the local README.md.
+
+# Build and install the GCC toolchain.
+bash ./build-toolchain.sh $RISCV
+
+# Return to the toplevel CVA6 directory.
+cd -
 ```
 
-This 4 variables will ensure you use correctly the new gcc compiler you have just installed.
-You will now be able to run the test scripts.
+You will now be able to run the CVA6 test scripts.
 
 #### Environent setup
 
@@ -178,7 +206,7 @@ To check the RTL cva6 behaviour, the RTL simulation trace is compared to spike t
 
 ```sh
 export DV_SIMULATORS=veri-testharness,spike
-sh verif/regress/smoke-tests.sh
+bash verif/regress/smoke-tests.sh
 ```
 
 #### Test execution
@@ -187,9 +215,9 @@ Run one of the shell scripts:
 
 ```sh
 # riscv-compliance (https://github.com/riscv/riscv-compliance) test suite:
-sh verif/regress/dv-riscv-compliance.sh
+bash verif/regress/dv-riscv-compliance.sh
 # riscv-tests (https://github.com/riscv/riscv-tests) test suite:
-sh verif/regress/dv-riscv-tests.sh
+bash verif/regress/dv-riscv-tests.sh
 ```
 
 

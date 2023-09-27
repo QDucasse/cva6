@@ -166,13 +166,33 @@ package ariane_pkg;
     localparam NR_RGPR_PORTS = 2;
 
     // static debug hartinfo
-    localparam ariane_dm_pkg::hartinfo_t DebugHartInfo = '{
+    // debug causes
+    localparam logic [2:0] CauseBreakpoint = 3'h1;
+    localparam logic [2:0] CauseTrigger    = 3'h2;
+    localparam logic [2:0] CauseRequest    = 3'h3;
+    localparam logic [2:0] CauseSingleStep = 3'h4;
+    // amount of data count registers implemented
+    localparam logic [3:0] DataCount     = 4'h2;
+
+    // address where data0-15 is shadowed or if shadowed in a CSR
+    // address of the first CSR used for shadowing the data
+    localparam logic [11:0] DataAddr = 12'h380; // we are aligned with Rocket here
+    typedef struct packed {
+      logic [31:24] zero1;
+      logic [23:20] nscratch;
+      logic [19:17] zero0;
+      logic         dataaccess;
+      logic [15:12] datasize;
+      logic [11:0]  dataaddr;
+    } hartinfo_t;
+
+    localparam hartinfo_t DebugHartInfo = '{
                                                 zero1:        '0,
                                                 nscratch:      2, // Debug module needs at least two scratch regs
                                                 zero0:        '0,
                                                 dataaccess: 1'b1, // data registers are memory mapped in the debugger
-                                                datasize: ariane_dm_pkg::DataCount,
-                                                dataaddr: ariane_dm_pkg::DataAddr
+                                                datasize: DataCount,
+                                                dataaddr: DataAddr
                                               };
 
     // enables a commit log which matches spikes commit log format for easier trace comparison
@@ -484,6 +504,8 @@ package ariane_pkg;
                                ANDN, ORN, XNOR,
                                // Accelerator operations
                                ACCEL_OP, ACCEL_OP_FS1, ACCEL_OP_FD, ACCEL_OP_LOAD, ACCEL_OP_STORE,
+                               // Zicond instruction
+                               CZERO_EQZ, CZERO_NEZ,
                                // JITDomain - LSU duplicated functions
                                LD1, SD1, LW1, LWU1, SW1, LH1, LHU1, SH1, LB1, SB1, LBU1, LS, SS, CHDOM, RETDOM
                              } fu_op;
@@ -510,94 +532,62 @@ package ariane_pkg;
     // function used in instr_trace svh
     // is_rs1_fpr function is kept to allow cva6 compilation with instr_trace feature
     function automatic logic is_rs1_fpr (input fu_op op);
-        return is_rs1_fpr_cfg (op, 1);
-    endfunction
-
-    function automatic logic is_rs1_fpr_cfg (input fu_op op, input bit FpPresent);
-        if (FpPresent) begin
-            unique case (op) inside
-                [FMUL:FNMADD],                   // Computational Operations (except ADD/SUB)
-                FCVT_F2I,                        // Float-Int Casts
-                FCVT_F2F,                        // Float-Float Casts
-                FSGNJ,                           // Sign Injections
-                FMV_F2X,                         // FPR-GPR Moves
-                FCMP,                            // Comparisons
-                FCLASS,                          // Classifications
-                [VFMIN:VFCPKCD_D],               // Additional Vectorial FP ops
-                ACCEL_OP_FS1      : return 1'b1; // Accelerator instructions
-                default           : return 1'b0; // all other ops
-            endcase
-        end else begin
-            return 1'b0;
-        end
+        unique case (op) inside
+            [FMUL:FNMADD],                   // Computational Operations (except ADD/SUB)
+            FCVT_F2I,                        // Float-Int Casts
+            FCVT_F2F,                        // Float-Float Casts
+            FSGNJ,                           // Sign Injections
+            FMV_F2X,                         // FPR-GPR Moves
+            FCMP,                            // Comparisons
+            FCLASS,                          // Classifications
+            [VFMIN:VFCPKCD_D],               // Additional Vectorial FP ops
+            ACCEL_OP_FS1      : return 1'b1; // Accelerator instructions
+            default           : return 1'b0; // all other ops
+        endcase
     endfunction
 
     // function used in instr_trace svh
     // is_rs2_fpr function is kept to allow cva6 compilation with instr_trace feature
     function automatic logic is_rs2_fpr (input fu_op op);
-        return is_rs2_fpr_cfg (op, 1);
-    endfunction
-
-    function automatic logic is_rs2_fpr_cfg (input fu_op op, input bit FpPresent);
-        if (FpPresent) begin
-            unique case (op) inside
-                [FSD:FSB],                       // FP Stores
-                [FADD:FMIN_MAX],                 // Computational Operations (no sqrt)
-                [FMADD:FNMADD],                  // Fused Computational Operations
-                FCVT_F2F,                        // Vectorial F2F Conversions requrie target
-                [FSGNJ:FMV_F2X],                 // Sign Injections and moves mapped to SGNJ
-                FCMP,                            // Comparisons
-                [VFMIN:VFCPKCD_D] : return 1'b1; // Additional Vectorial FP ops
-                default           : return 1'b0; // all other ops
-            endcase
-        end else begin
-            return 1'b0;
-        end
+        unique case (op) inside
+            [FSD:FSB],                       // FP Stores
+            [FADD:FMIN_MAX],                 // Computational Operations (no sqrt)
+            [FMADD:FNMADD],                  // Fused Computational Operations
+            FCVT_F2F,                        // Vectorial F2F Conversions requrie target
+            [FSGNJ:FMV_F2X],                 // Sign Injections and moves mapped to SGNJ
+            FCMP,                            // Comparisons
+            [VFMIN:VFCPKCD_D] : return 1'b1; // Additional Vectorial FP ops
+            default           : return 1'b0; // all other ops
+        endcase
     endfunction
 
     // function used in instr_trace svh
     // is_imm_fpr function is kept to allow cva6 compilation with instr_trace feature
     // ternary operations encode the rs3 address in the imm field, also add/sub
     function automatic logic is_imm_fpr (input fu_op op);
-        return is_imm_fpr_cfg (op, 1);
-    endfunction
-
-    function automatic logic is_imm_fpr_cfg (input fu_op op, input bit FpPresent);
-        if (FpPresent) begin
-            unique case (op) inside
-                [FADD:FSUB],                         // ADD/SUB need inputs as Operand B/C
-                [FMADD:FNMADD],                      // Fused Computational Operations
-                [VFCPKAB_S:VFCPKCD_D] : return 1'b1; // Vectorial FP cast and pack ops
-                default               : return 1'b0; // all other ops
-            endcase
-        end else begin
-            return 1'b0;
-        end
+        unique case (op) inside
+            [FADD:FSUB],                         // ADD/SUB need inputs as Operand B/C
+            [FMADD:FNMADD],                      // Fused Computational Operations
+            [VFCPKAB_S:VFCPKCD_D] : return 1'b1; // Vectorial FP cast and pack ops
+            default               : return 1'b0; // all other ops
+        endcase
     endfunction
 
     // function used in instr_trace svh
     // is_rd_fpr function is kept to allow cva6 compilation with instr_trace feature
     function automatic logic is_rd_fpr (input fu_op op);
-        return is_rd_fpr_cfg (op, 1);
-    endfunction
-
-    function automatic logic is_rd_fpr_cfg (input fu_op op, input bit FpPresent);
-        if (FpPresent) begin
-            unique case (op) inside
-                [FLD:FLB],                           // FP Loads
-                [FADD:FNMADD],                       // Computational Operations
-                FCVT_I2F,                            // Int-Float Casts
-                FCVT_F2F,                            // Float-Float Casts
-                FSGNJ,                               // Sign Injections
-                FMV_X2F,                             // GPR-FPR Moves
-                [VFMIN:VFSGNJX],                     // Vectorial MIN/MAX and SGNJ
-                [VFCPKAB_S:VFCPKCD_D],               // Vectorial FP cast and pack ops
-                ACCEL_OP_FD           : return 1'b1; // Accelerator instructions
-                default               : return 1'b0; // all other ops
-            endcase
-        end else begin
-            return 1'b0;
-        end
+        unique case (op) inside
+            [FLD:FLB],                           // FP Loads
+            [FADD:FNMADD],                       // Computational Operations
+            FCVT_I2F,                            // Int-Float Casts
+            FCVT_F2F,                            // Float-Float Casts
+            FSGNJ,                               // Sign Injections
+            FMV_X2F,                             // GPR-FPR Moves
+            [VFMIN:VFSGNJX],                     // Vectorial MIN/MAX and SGNJ
+            [VFCPKAB_S:VFCPKCD_D],               // Vectorial FP cast and pack ops
+            ACCEL_OP_FD           : return 1'b1; // Accelerator instructions
+            default               : return 1'b0; // all other ops
+        endcase
     endfunction
 
     function automatic logic is_amo (fu_op op);

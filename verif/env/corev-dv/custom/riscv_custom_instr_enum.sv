@@ -11,6 +11,8 @@
 
 // Add custom instruction name enum
 CUSTOM_1,
+
+//Custom instruction for CVXIF
 CUS_ADD,
 CUS_ADD_MULTI,
 CUS_NOP,
@@ -18,3 +20,7 @@ CUS_ADD_RS3,
 CUS_EXC,
 CUS_U_ADD,
 CUS_S_ADD,
+
+//Zicond extension
+CZERO_EQZ,
+CZERO_NEZ,

@@ -93,8 +93,8 @@ endif
 cov-exclude-list ?= $(root-dir)/cov-exclude-mod.lst
 
 ifdef cov
-	cov-comp-opt = -cm line+cond+fsm+tgl+assert -cm_hier $(cov-exclude-list)
-	cov-run-opt  = -cm line+cond+fsm+tgl+assert -cm_name $(TESTNAME)
+	cov-comp-opt = -cm line+cond+tgl -cm_hier $(cov-exclude-list)
+	cov-run-opt  = -cm line+cond+tgl -cm_name $(TESTNAME)
 else
 	cov-comp-opt =
 	cov-run-opt  =
@@ -117,7 +117,7 @@ spike:
 ###############################################################################
 vcs-testharness:
 	make -C $(path_var) vcs_build target=$(target) defines=$(subst +define+,,$(isscomp_opts))
-	$(path_var)/work-vcs/simv $(if $(VERDI), -verdi -do $(path_var)/init_testharness.do,) +permissive -sv_lib $(path_var)/work-dpi/ariane_dpi \
+	$(path_var)/work-vcs/simv +vcs+lic+wait $(if $(VERDI), -verdi -do $(path_var)/init_testharness.do,) +permissive -sv_lib $(path_var)/work-dpi/ariane_dpi \
 	  +tohost_addr=$(shell $$RISCV/bin/${CV_SW_PREFIX}nm -B $(elf) | grep -w tohost | cut -d' ' -f1) \
 	  +PRELOAD=$(elf) +permissive-off ++$(elf) $(issrun_opts)
 	$(tool_path)/spike-dasm --isa=$(variant) < ./trace_rvfi_hart_00.dasm > $(log)
@@ -182,8 +182,9 @@ export DV_OVPM_DESIGN         = $(DV_OVPM_HOME)/design
 ALL_UVM_FLAGS           = -lca -sverilog +incdir+$(VCS_HOME)/etc/uvm/src \
 	  $(VCS_HOME)/etc/uvm/src/uvm_pkg.sv +UVM_VERBOSITY=UVM_MEDIUM -ntb_opts uvm-1.2 -timescale=1ns/1ps \
 	  -assert svaext -race=all -ignore unique_checks -full64 -q +incdir+$(VCS_HOME)/etc/uvm/src \
-	  +incdir+$(CVA6_REPO_DIR)/verif/core-v-verif/$(CV_CORE_LC)/env/uvme +incdir+$(CVA6_REPO_DIR)/verif/core-v-verif/$(CV_CORE_LC)/tb/uvmt \
-	  $(if $(DEBUG), -debug_access+all $(if $(VERDI), -kdb) $(if $(TRACE_COMPACT),+vcs+fsdbon))
+	  +incdir+$(CVA6_REPO_DIR)/verif/env/uvme +incdir+$(CVA6_REPO_DIR)/verif/tb/uvmt \
+	  $(if $(DEBUG), -debug_access+all $(if $(VERDI), -kdb) $(if $(TRACE_COMPACT),+vcs+fsdbon))\
+	  -cm_seqnoconst -diag noconst
 
 ALL_SIMV_UVM_FLAGS      = -licwait 20 $(issrun_opts) \
 		-sv_lib $(CVA6_REPO_DIR)/verif/core-v-verif/lib/dpi_dasm/lib/Linux64/libdpi_dasm +signature=I-ADD-01.signature_output \
@@ -210,7 +211,7 @@ endif
 dpi-library = $(VCS_WORK_DIR)/work-dpi
 dpi_build:
 	mkdir -p $(dpi-library)
-	g++ -shared -fPIC -std=c++17 -Bsymbolic -I../corev_apu/tb/dpi -O3 -I$(SPIKE_ROOT)/include \
+	g++ -shared -fPIC -std=c++17 -Bsymbolic -I../corev_apu/tb/dpi -O3 -I$(SPIKE_INSTALL_DIR)/include \
 	-I$(VCS_HOME)/include -I$(RISCV)/include -c $(CVA6_REPO_DIR)/corev_apu/tb/dpi/elfloader.cc \
 	-o $(dpi-library)/elfloader.o
 	g++ -shared -m64 -o $(dpi-library)/ariane_dpi.so $(dpi-library)/elfloader.o -L$(RISCV)/lib -Wl,-rpath,$(RISCV)/lib
@@ -247,7 +248,7 @@ vcs-uvm:
           for i in `ls *.$(SIMV_TRACE_EXTN)` ; do mv $$i `dirname $(log)`/`basename $(log) .log`.$(target).$$i ; done || true
 
 generate_cov_dash:
-	urg -dir $(VCS_WORK_DIR)/simv.vdb -group instcov_for_score
+	urg -dir $(VCS_WORK_DIR)/simv.vdb -group instcov_for_score -tgl portsonly
 
 vcs_clean_all:
 	@echo "[VCS] Cleanup (entire vcs_work dir)"
