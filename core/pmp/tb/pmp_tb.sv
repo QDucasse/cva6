@@ -137,21 +137,21 @@ module pmp_tb;
         #5ns;
         assert(allow == 0);
         // Current domain = DOM2 | dmpcfg = DOM1
-        current_domain=riscv::DOM1;
+        current_domain=riscv::DOM2;
         for (int i=0;i<NR_ENTRIES;i++) begin
             confdmp[i].domain=riscv::DOM1;
         end
         #5ns;
         assert(allow == 0);
         // Current domain = DOM2 | dmpcfg = DOM2
-        current_domain=riscv::DOM1;
+        current_domain=riscv::DOM2;
         for (int i=0;i<NR_ENTRIES;i++) begin
             confdmp[i].domain=riscv::DOM2;
         end
         #5ns;
         assert(allow == 1);
         // Current domain = DOM2 | dmpcfg = DOMI
-        current_domain=riscv::DOM1;
+        current_domain=riscv::DOM2;
         for (int i=0;i<NR_ENTRIES;i++) begin
             confdmp[i].domain=riscv::DOMI;
         end
