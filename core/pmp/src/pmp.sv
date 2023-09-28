@@ -65,7 +65,8 @@ module pmp #(
                             ((access_type_i & pmpconf_i[i].access_type) != access_type_i) 
                             || (
                                 (dmpconf_i[i].domain != riscv::DOMI)
-                                & ((curdom_i & dmpconf_i[i].domain) != dmpconf_i[i].domain)
+                                & (curdom_i != riscv::DOMI)
+                                & (curdom_i != dmpconf_i[i].domain)
                             )
                         ) allow_o = 1'b0;
                         else allow_o = 1'b1;
