@@ -12,6 +12,10 @@
 // Date: 2.10.2019
 // Description: 
 
+/* Updates for @QDucasse work:
+ * - V2023.09.28 : testing a single PMP/DMP entry with PMP in NAPOT address mode. Only DMP rights are tested.
+ */
+
 import tb_pkg::*;
 
 module pmp_tb;
@@ -20,7 +24,7 @@ module pmp_tb;
 
     localparam int unsigned WIDTH = 16;
     localparam int unsigned PMP_LEN = 13;
-    localparam int unsigned NR_ENTRIES = 4;
+    localparam int unsigned NR_ENTRIES = 1;
 
     logic [WIDTH-1:0] addr;
     riscv::pmp_access_t access_type;
@@ -28,6 +32,8 @@ module pmp_tb;
     // Configuration
     logic [NR_ENTRIES-1:0][PMP_LEN-1:0] conf_addr;
     riscv::pmpcfg_t [NR_ENTRIES-1:0] conf;
+    riscv::dmpcfg_t [NR_ENTRIES-1:0] confdmp;
+    riscv::dmp_domain_t current_domain;
 
     // Output
     logic allow;
@@ -44,8 +50,10 @@ module pmp_tb;
         .addr_i        ( addr              ),
         .access_type_i ( access_type       ),
         .priv_lvl_i    ( riscv::PRIV_LVL_U ),
+        .curdom_i      ( current_domain    ),
         .conf_addr_i   ( conf_addr         ),
-        .conf_i        ( conf              ),
+        .pmpconf_i     ( conf              ),
+        .dmpconf_i     ( confdmp           ),
         .allow_o       ( allow             )
     );
     
@@ -55,44 +63,127 @@ module pmp_tb;
         for (int i = 0; i < NR_ENTRIES; i++) begin
             conf[i].addr_mode = riscv::OFF;
         end
-
-        // test napot 1
+        // request to test
         addr = 16'b00011001_10111010;
         access_type = riscv::ACCESS_READ;
-        
-        // pmp 3
+        // PMP entry settings
         base = 16'b00011001_00000000;
         size = 8;
-        conf_addr[2] = P#(.WIDTH(WIDTH), .PMP_LEN(PMP_LEN))::base_to_conf(base, size);
-        conf[2].addr_mode = riscv::NAPOT;
-        conf[2].access_type = riscv::ACCESS_READ | riscv::ACCESS_WRITE | riscv::ACCESS_EXEC;
-
-        #5ns;
-        assert(allow == 1);
-
-        // add second PMP entry that disallows
-        
-        // pmp 1
-        base = 16'b00011001_10110000;
-        size = 4;
-        conf_addr[1] = P#(.WIDTH(WIDTH), .PMP_LEN(PMP_LEN))::base_to_conf(base, size);
-        conf[1].addr_mode = riscv::NAPOT;
-        conf[1].access_type = '0;
-
-        #5ns;
-        assert(allow == 0);
-        
-        // add third PMP entry that allows again
-        
-        // pmp 2
-        base = 16'b00011001_10111000;
-        size = 3;
         conf_addr[0] = P#(.WIDTH(WIDTH), .PMP_LEN(PMP_LEN))::base_to_conf(base, size);
         conf[0].addr_mode = riscv::NAPOT;
-        conf[0].access_type = riscv::ACCESS_READ;
+        conf[0].access_type = riscv::ACCESS_READ | riscv::ACCESS_WRITE | riscv::ACCESS_EXEC;
 
+        // Current domain = DOM0 | dmpcfg = DOM0
+        current_domain=riscv::DOM0;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOM0;
+        end
         #5ns;
         assert(allow == 1);
-
+        // Current domain = DOM0 | dmpcfg = DOM1        
+        current_domain=riscv::DOM0;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOM1;
+        end
+        #5ns;
+        assert(allow == 0);
+        // Current domain = DOM0 | dmpcfg = DOM2
+                current_domain=riscv::DOM0;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOM2;
+        end
+        #5ns;
+        assert(allow == 0);
+        // Current domain = DOM0 | dmpcfg = DOMI
+        current_domain=riscv::DOM0;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOMI;
+        end
+        #5ns;
+        assert(allow == 1);
+        // Current domain = DOM1 | dmpcfg = DOM0
+        current_domain=riscv::DOM1;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOM0;
+        end
+        #5ns;
+        assert(allow == 0);
+        // Current domain = DOM1 | dmpcfg = DOM1
+        current_domain=riscv::DOM1;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOM1;
+        end
+        #5ns;
+        assert(allow == 1);
+        // Current domain = DOM1 | dmpcfg = DOM2
+        current_domain=riscv::DOM1;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOM2;
+        end
+        #5ns;
+        assert(allow == 0);
+        // Current domain = DOM1 | dmpcfg = DOMI
+        current_domain=riscv::DOM1;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOMI;
+        end
+        #5ns;
+        assert(allow == 1);
+        // Current domain = DOM2 | dmpcfg = DOM0
+        current_domain=riscv::DOM2;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOM0;
+        end
+        #5ns;
+        assert(allow == 0);
+        // Current domain = DOM2 | dmpcfg = DOM1
+        current_domain=riscv::DOM1;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOM1;
+        end
+        #5ns;
+        assert(allow == 0);
+        // Current domain = DOM2 | dmpcfg = DOM2
+        current_domain=riscv::DOM1;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOM2;
+        end
+        #5ns;
+        assert(allow == 1);
+        // Current domain = DOM2 | dmpcfg = DOMI
+        current_domain=riscv::DOM1;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOMI;
+        end
+        #5ns;
+        assert(allow == 1);
+        // Current domain = DOMI| dmpcfg = DOM0
+        current_domain=riscv::DOMI;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOM0;
+        end
+        #5ns;
+        assert(allow == 1);
+        // Current domain = DOMI | dmpcfg = DOM1
+        current_domain=riscv::DOMI;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOM1;
+        end
+        #5ns;
+        assert(allow == 1);
+        // Current domain = DOMI | dmpcfg = DOM2
+        current_domain=riscv::DOMI;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOM2;
+        end
+        #5ns;
+        assert(allow == 1);
+        // Current domain = DOMI | dmpcfg = DOMI
+        current_domain=riscv::DOMI;
+        for (int i=0;i<NR_ENTRIES;i++) begin
+            confdmp[i].domain=riscv::DOMI;
+        end
+        #5ns;
+        assert(allow == 1);
     end
 endmodule
