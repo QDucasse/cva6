@@ -879,7 +879,6 @@ module decoder import ariane_pkg::*; #(
                 // JITDomain - Duplicated JALR (ChgDom) 
                 riscv::OpcodeChgDom: begin
                     instruction_o.fu        = CTRL_FLOW;
-                    instruction_o.op        = ariane_pkg::CHDOM;
                     instruction_o.rs1[4:0]  = instr.itype.rs1;
                     imm_select              = IIMM;
                     instruction_o.rd[4:0]   = instr.itype.rd;
@@ -896,6 +895,7 @@ module decoder import ariane_pkg::*; #(
                             instruction_o.code_dom  = riscv::DOM0; // JITDomain - Executed from domain 0
                             instruction_o.data_dom  = riscv::DOM1; // JITDomain -Arrives in domain 1
                         end
+                        default: illegal_instr = 1'b1;
                     endcase
                 end
 
