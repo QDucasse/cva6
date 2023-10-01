@@ -53,7 +53,7 @@ package riscv;
     } pmpcfg_t;
 
     // JITDomain - Available domains
-    typedef enum logic [2:0] {
+    typedef enum logic [1:0] {
         DOM0 = 2'b00,
         DOM1 = 2'b01,
         DOM2 = 2'b10,
