@@ -74,6 +74,8 @@ module pmp_tb;
         access_type = riscv::ACCESS_READ;
 
         // 1st test batch: PMP allow access
+        base = 16'b00011001_00000000;
+        size = 8;
         conf_addr[0] = P#(.WIDTH(WIDTH), .PMP_LEN(PMP_LEN))::base_to_conf(base, size);
         conf_pmp[0].addr_mode = riscv::NAPOT;
         conf_pmp[0].access_type = riscv::ACCESS_READ | riscv::ACCESS_WRITE | riscv::ACCESS_EXEC;
