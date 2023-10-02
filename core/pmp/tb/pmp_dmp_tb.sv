@@ -66,7 +66,7 @@ module pmp_tb;
 
     initial begin
         // set pmp to disabled initially
-        conf_pmp[0].addr_node = riscv::OFF;
+      conf_pmp[0].addr_mode = riscv::OFF;
         conf_dmp[0].domain = riscv::DOMI;
 
         // test address to read
