@@ -22,7 +22,7 @@ module pmp #(
     input logic [PLEN-1:0] addr_i,
     input riscv::pmp_access_t access_type_i,
     input riscv::priv_lvl_t priv_lvl_i,
-    input riscv::dmp_domain_t curdom_i,            // JITDomain
+    input riscv::dmp_domain_t expected_dom_i,      // JITDomain - from ID
     // Configuration
     input logic [15:0][PMP_LEN-1:0] conf_addr_i,
     input riscv::pmpcfg_t [15:0] pmpconf_i,
@@ -65,8 +65,8 @@ module pmp #(
                             ((access_type_i & pmpconf_i[i].access_type) != access_type_i) 
                             || (
                                 (dmpconf_i[i].domain != riscv::DOMI)
-                                & (curdom_i != riscv::DOMI)
-                                & (curdom_i != dmpconf_i[i].domain)
+                                & (expected_dom_i != riscv::DOMI)
+                                & (expected_dom_i != dmpconf_i[i].domain)
                             )
                         ) allow_o = 1'b0;
                         else allow_o = 1'b1;

@@ -72,7 +72,7 @@ module cva6_ptw_sv32 import ariane_pkg::*; #(
     input  logic [15:0][riscv::PLEN-3:0] pmpaddr_i,
     // JITDomain
     input  riscv::dmpcfg_t [15:0]   dmpcfg_i,
-    input  riscv::dmp_domain_t      curdom_i,
+    input  riscv::dmp_domain_t      expected_dom_i,
     output logic [riscv::PLEN-1:0]  bad_paddr_o
 
 );
@@ -152,18 +152,18 @@ module cva6_ptw_sv32 import ariane_pkg::*; #(
         .PMP_LEN    ( riscv::PLEN - 2        ),
         .NR_ENTRIES ( ArianeCfg.NrPMPEntries )
     ) i_pmp_ptw (
-        .addr_i        ( ptw_pptr_q         ),
+        .addr_i         ( ptw_pptr_q         ),
         // PTW access are always checked as if in S-Mode...
-        .priv_lvl_i    ( riscv::PRIV_LVL_S  ),
+        .priv_lvl_i     ( riscv::PRIV_LVL_S  ),
         // ...and they are always loads
-        .access_type_i ( riscv::ACCESS_READ ),
+        .access_type_i  ( riscv::ACCESS_READ ),
         // Configuration
-        .conf_addr_i   ( pmpaddr_i          ),
-        .pmpconf_i     ( pmpcfg_i           ),
+        .conf_addr_i    ( pmpaddr_i          ),
+        .pmpconf_i      ( pmpcfg_i           ),
         // JITDomain
-        .dmpconf_i     ( dmpcfg_i           ),
-        .curdom_i      ( riscv::DOMI        ),
-        .allow_o       ( allow_access       )
+        .dmpconf_i      ( dmpcfg_i           ),
+        .expected_dom_i ( riscv::DOMI        ),
+        .allow_o        ( allow_access       )
     );
 
 
