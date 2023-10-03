@@ -105,6 +105,11 @@ module issue_read_operands import ariane_pkg::*; #(
     fu_op operator_n, operator_q; // operation to perform
     fu_t  fu_n,       fu_q; // functional unit to use
 
+    // JITDomain - Output FF
+    riscv::dmp_domain_t code_dom_n, code_dom_q;
+    riscv::dmp_domain_t data_dom_n, data_dom_q;
+    logic               chg_dom_n,  chg_dom_q;
+
     // forwarding signals
     logic forward_rs1, forward_rs2, forward_rs3;
 
@@ -123,6 +128,10 @@ module issue_read_operands import ariane_pkg::*; #(
     assign fu_data_o.operation  = operator_q;
     assign fu_data_o.trans_id  = trans_id_q;
     assign fu_data_o.imm       = imm_q;
+    // JITDomain - Assign forwarded info to functional unit data
+    assign fu_data_o.code_dom  = code_dom_q;
+    assign fu_data_o.data_dom  = data_dom_q;
+    assign fu_data_o.chg_dom   = chg_dom_q;
     assign alu_valid_o         = alu_valid_q;
     assign branch_valid_o      = branch_valid_q;
     assign lsu_valid_o         = lsu_valid_q;
@@ -229,6 +238,10 @@ module issue_read_operands import ariane_pkg::*; #(
         trans_id_n = issue_instr_i.trans_id;
         fu_n       = issue_instr_i.fu;
         operator_n = issue_instr_i.op;
+        // JITDomain - Extract info from decoder sb entry
+        code_dom_n = issue_instr_i.code_dom;
+        data_dom_n = issue_instr_i.data_dom;
+        chg_dom_n  = issue_instr_i.chg_dom;
         // or should we forward
         if (forward_rs1) begin
             operand_a_n  = rs1_i;
@@ -519,6 +532,10 @@ module issue_read_operands import ariane_pkg::*; #(
             fu_q                  <= NONE;
             operator_q            <= ADD;
             trans_id_q            <= '0;
+            // JITDomain - Reset
+            code_dom_q            <= riscv::DOMI; 
+            data_dom_q            <= riscv::DOMI;
+            chg_dom_q             <= '0;
             pc_o                  <= '0;
             is_compressed_instr_o <= 1'b0;
             branch_predict_o      <= {cf_t'(0), {riscv::VLEN{1'b0}}};
@@ -529,6 +546,9 @@ module issue_read_operands import ariane_pkg::*; #(
             fu_q                  <= fu_n;
             operator_q            <= operator_n;
             trans_id_q            <= trans_id_n;
+            code_dom_q            <= code_dom_n;
+            data_dom_q            <= data_dom_n;
+            chg_dom_q             <= chg_dom_n;
             pc_o                  <= issue_instr_i.pc;
             is_compressed_instr_o <= issue_instr_i.is_compressed;
             branch_predict_o      <= issue_instr_i.bp;
