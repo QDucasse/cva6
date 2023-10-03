@@ -517,6 +517,9 @@ package ariane_pkg;
         riscv::xlen_t             operand_b;
         riscv::xlen_t             imm;
         logic [TRANS_ID_BITS-1:0] trans_id;
+        riscv::dmp_domain_t       code_dom; // JITDomain - Information passed to the functional units
+        riscv::dmp_domain_t       data_dom; //
+        logic                     chg_dom;  //
     } fu_data_t;
 
     function automatic logic op_is_branch (input fu_op op);
@@ -667,7 +670,7 @@ package ariane_pkg;
                                                  // JITDomain related fields
         logic [1:0] code_dom;                    // associated code domain        (should be executed from)
         logic [1:0] data_dom;                    // associated data domain        (should access data in)
-        logic                       chg_dom;     // flag to change internal state (should change domain)
+        logic       chg_dom;                     // flag to change internal state (should change domain)
     } scoreboard_entry_t;
 
     // ---------------
