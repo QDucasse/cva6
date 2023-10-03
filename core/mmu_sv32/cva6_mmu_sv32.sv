@@ -77,7 +77,7 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
     input  logic [15:0][riscv::PLEN-3:0]    pmpaddr_i,
     // JitDomain
     input  riscv::dmpcfg_t [15:0]           dmpcfg_i,
-    input  riscv::dmp_domain_t              curdom_i
+    input  riscv::dmp_domain_t              expected_dom_i
 );
 
     logic                   iaccess_err;   // insufficient privilege to access this instruction page
@@ -243,7 +243,7 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
       .pmpaddr_i                ( pmpaddr_i             ),
       // JITDomain
       .dmpcfg_i                 ( dmpcfg_i              ),
-      .curdom_i                 ( curdom_i              ),
+      .expected_dom_i      ( expected_dom_i   ),
       .bad_paddr_o              ( ptw_bad_paddr         )
 
 );
@@ -353,14 +353,14 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
         .addr_i        ( icache_areq_o.fetch_paddr ),
         .priv_lvl_i,
         // we will always execute on the instruction fetch port
-        .access_type_i ( riscv::ACCESS_EXEC        ),
+        .access_type_i  ( riscv::ACCESS_EXEC        ),
         // Configuration
-        .conf_addr_i   ( pmpaddr_i                 ),
-        .pmpconf_i     ( pmpcfg_i                  ),
+        .conf_addr_i    ( pmpaddr_i                 ),
+        .pmpconf_i      ( pmpcfg_i                  ),
         // JITDomain
-        .dmpconf_i     ( dmpcfg_i                  ),
-        .curdom_i      ( riscv::DOM0               ), // JITDomain - should be replaced with real curdom val
-        .allow_o       ( pmp_instr_allow           )
+        .dmpconf_i      ( dmpcfg_i                  ),
+        .expected_dom_i ( riscv::DOMI               ),  // JITDomain - domi for now?
+        .allow_o        ( pmp_instr_allow           )
     );
 
     //-----------------------
@@ -495,16 +495,16 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
         .PMP_LEN    ( riscv::PLEN - 2        ),
         .NR_ENTRIES ( CVA6Cfg.NrPMPEntries   )
     ) i_pmp_data (
-        .addr_i        ( lsu_paddr_o         ),
-        .priv_lvl_i    ( ld_st_priv_lvl_i    ),
-        .access_type_i ( pmp_access_type     ),
+        .addr_i         ( lsu_paddr_o         ),
+        .priv_lvl_i     ( ld_st_priv_lvl_i    ),
+        .access_type_i  ( pmp_access_type     ),
         // Configuration
-        .conf_addr_i   ( pmpaddr_i           ),
-        .pmpconf_i     ( pmpcfg_i            ),
+        .conf_addr_i    ( pmpaddr_i           ),
+        .pmpconf_i      ( pmpcfg_i            ),
         // JITDomain
-        .dmpconf_i     ( dmpcfg_i            ),
-        .curdom_i      ( riscv::DOMI         ),  // JITDomain - should be replaced with real curdom val
-        .allow_o       ( pmp_data_allow      )
+        .dmpconf_i      ( dmpcfg_i            ),
+        .expected_dom_i ( expected_dom_i      ),  // JITDomain
+        .allow_o        ( pmp_data_allow      )
     );
 
     // ----------

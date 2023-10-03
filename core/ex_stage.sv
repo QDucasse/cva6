@@ -352,7 +352,6 @@ module ex_stage import ariane_pkg::*; #(
         .pmpcfg_i,
         .pmpaddr_i,
         .dmpcfg_i,
-        .curdom_i,
         .lsu_addr_o,
         .mem_paddr_o,
         .lsu_rmask_o,
