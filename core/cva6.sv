@@ -362,7 +362,6 @@ module cva6 import ariane_pkg::*; #(
   riscv::pmpcfg_t [15:0]    pmpcfg;
   logic [15:0][riscv::PLEN-3:0] pmpaddr;
   // JITDomain
-  riscv::dmp_domain_t       curdom;
   riscv::dmpcfg_t [15:0]    dmpcfg;
   logic [31:0]              mcountinhibit_csr_perf;
   // ----------------------------
@@ -700,7 +699,6 @@ module cva6 import ariane_pkg::*; #(
     .pmpaddr_i              ( pmpaddr                     ),
     // JITDomain
     .dmpcfg_i               ( dmpcfg                      ),
-    .curdom_i               ( curdom                      ),
     //RVFI
     .lsu_addr_o             ( lsu_addr                    ),
     .mem_paddr_o            ( mem_paddr                   ),

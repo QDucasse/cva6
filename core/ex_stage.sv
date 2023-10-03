@@ -122,7 +122,6 @@ module ex_stage import ariane_pkg::*; #(
     input  logic[15:0][riscv::PLEN-3:0]            pmpaddr_i,
     // JITDomain
     input  riscv::dmpcfg_t [15:0]                  dmpcfg_i,
-    input  riscv::dmp_domain_t                     curdom_i,
 
     // RVFI
     output [riscv::VLEN-1:0]                       lsu_addr_o,
