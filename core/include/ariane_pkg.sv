@@ -575,8 +575,8 @@ package ariane_pkg;
         logic                       vfp;         // is this a vector floating-point instruction?
 
                                                  // JITDomain related fields
-        logic [1:0] code_dom;                    // associated code domain        (should be executed from)
-        logic [1:0] data_dom;                    // associated data domain        (should access data in)
+        riscv::dmp_domain_t code_dom;      // associated code domain        (should be executed from)
+        riscv::dmp_domain_t data_dom;      // associated data domain        (should access data in)
         logic       chg_dom;                     // flag to change internal state (should change domain)
     } scoreboard_entry_t;
 
