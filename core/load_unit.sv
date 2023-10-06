@@ -36,6 +36,7 @@ module load_unit import ariane_pkg::*; #(
     // MMU -> Address Translation
     output logic                     translation_req_o,   // request address translation
     output logic [riscv::VLEN-1:0]   vaddr_o,             // virtual address out
+    output riscv::dmp_domain_t       data_dom_o,          // JITDomain - Data domain info
     input  logic [riscv::PLEN-1:0]   paddr_i,             // physical address in
     input  exception_t               ex_i,                // exception which may has happened earlier. for example: mis-aligned exception
     input  logic                     dtlb_hit_i,          // hit on the dtlb, send in the same cycle as the request
@@ -152,6 +153,8 @@ module load_unit import ariane_pkg::*; #(
     assign page_offset_o = lsu_ctrl_i.vaddr[11:0];
     // feed-through the virtual address for VA translation
     assign vaddr_o = lsu_ctrl_i.vaddr;
+    // JITDomain - feed-through the expected data domain
+    assign data_dom_o = lsu_ctrl_i.data_dom;
     // this is a read-only interface so set the write enable to 0
     assign req_port_o.data_we = 1'b0;
     assign req_port_o.data_wdata = '0;

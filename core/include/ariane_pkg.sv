@@ -526,6 +526,8 @@ package ariane_pkg;
         fu_t                            fu;
         fu_op                           operation;
         logic [TRANS_ID_BITS-1:0]       trans_id;
+        riscv::dmp_domain_t             code_dom;
+        riscv::dmp_domain_t             data_dom;
     } lsu_ctrl_t;
 
     // ---------------
@@ -575,9 +577,9 @@ package ariane_pkg;
         logic                       vfp;         // is this a vector floating-point instruction?
 
                                                  // JITDomain related fields
-        riscv::dmp_domain_t code_dom;      // associated code domain        (should be executed from)
-        riscv::dmp_domain_t data_dom;      // associated data domain        (should access data in)
-        logic       chg_dom;                     // flag to change internal state (should change domain)
+        riscv::dmp_domain_t code_dom;            // associated code domain        (should be executed from)
+        riscv::dmp_domain_t data_dom;            // associated data domain        (should access data in)
+        logic               chg_dom;             // flag to change internal state (should change domain)
     } scoreboard_entry_t;
 
     // ---------------

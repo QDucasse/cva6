@@ -119,6 +119,7 @@ module load_store_unit import ariane_pkg::*; #(
     logic                     translation_valid;
     logic [riscv::VLEN-1:0]   mmu_vaddr;
     logic [riscv::PLEN-1:0]   mmu_paddr, mmu_vaddr_plen, fetch_vaddr_plen;
+    riscv::dmp_domain_t       mmu_data_dom;
     exception_t               mmu_exception;
     logic                     dtlb_hit;
     logic [riscv::PPNW-1:0]   dtlb_ppn;
@@ -126,9 +127,11 @@ module load_store_unit import ariane_pkg::*; #(
     logic                     ld_valid;
     logic [TRANS_ID_BITS-1:0] ld_trans_id;
     riscv::xlen_t             ld_result;
+    riscv::dmp_domain_t       ld_data_dom; // JITDomain - Info on the expected data domain (from load)
     logic                     st_valid;
     logic [TRANS_ID_BITS-1:0] st_trans_id;
     riscv::xlen_t             st_result;
+    riscv::dmp_domain_t       st_data_dom; // JITDomain - Info on the expected data domain (from store)
 
     logic [11:0]              page_offset;
     logic                     page_offset_matches;
@@ -169,7 +172,7 @@ module load_store_unit import ariane_pkg::*; #(
             .pmpaddr_i,
             // JITDomain
             .dmpcfg_i,
-            .expected_dom_i    ( fu_data_i.data_dom     ),
+            .expected_dom_i         ( mmu_data_dom           ),
             .*
         );
     end else if (MMU_PRESENT && (riscv::XLEN == 32)) begin : gen_mmu_sv32
@@ -201,7 +204,7 @@ module load_store_unit import ariane_pkg::*; #(
             .pmpaddr_i,
             // JITDomain
             .dmpcfg_i,
-            .expected_dom_i         ( fu_data_i.data_dom     ),
+            .expected_dom_i         ( mmu_data_dom           ),
             .*
         );
     end else begin : gen_no_mmu
@@ -275,6 +278,7 @@ module load_store_unit import ariane_pkg::*; #(
         // MMU port
         .translation_req_o     ( st_translation_req   ),
         .vaddr_o               ( st_vaddr             ),
+        .data_dom_o            ( st_data_dom          ),
         .mem_paddr_o           ( mem_paddr_o          ),
         .paddr_i               ( mmu_paddr            ),
         .ex_i                  ( mmu_exception        ),
@@ -307,6 +311,7 @@ module load_store_unit import ariane_pkg::*; #(
         // MMU port
         .translation_req_o     ( ld_translation_req   ),
         .vaddr_o               ( ld_vaddr             ),
+        .data_dom_o            ( ld_data_dom          ),
         .paddr_i               ( mmu_paddr            ),
         .ex_i                  ( mmu_exception        ),
         .dtlb_hit_i            ( dtlb_hit             ),
@@ -366,12 +371,14 @@ module load_store_unit import ariane_pkg::*; #(
                 ld_valid_i           = lsu_ctrl.valid;
                 translation_req      = ld_translation_req;
                 mmu_vaddr            = ld_vaddr;
+                mmu_data_dom         = ld_data_dom;
             end
             // all stores go here
             STORE: begin
                 st_valid_i           = lsu_ctrl.valid;
                 translation_req      = st_translation_req;
                 mmu_vaddr            = st_vaddr;
+                mmu_data_dom         = st_data_dom;
             end
             // not relevant for the LSU
             default: ;
@@ -480,7 +487,7 @@ module load_store_unit import ariane_pkg::*; #(
     // new data arrives here
     lsu_ctrl_t lsu_req_i;
 
-    assign lsu_req_i = {lsu_valid_i, vaddr_i, overflow, fu_data_i.operand_b, be_i, fu_data_i.fu, fu_data_i.operation, fu_data_i.trans_id};
+    assign lsu_req_i = {lsu_valid_i, vaddr_i, overflow, fu_data_i.operand_b, be_i, fu_data_i.fu, fu_data_i.operation, fu_data_i.trans_id, fu_data_i.code_dom, fu_data_i.data_dom};
 
     lsu_bypass #(
         .CVA6Cfg    ( CVA6Cfg    )

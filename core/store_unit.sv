@@ -37,6 +37,7 @@ module store_unit import ariane_pkg::*; #(
     // MMU -> Address Translation
     output logic                     translation_req_o, // request address translation
     output logic [riscv::VLEN-1:0]   vaddr_o,           // virtual address out
+    output riscv::dmp_domain_t       data_dom_o,        // JITDomain - Data domain info
     output [riscv::PLEN-1:0]         mem_paddr_o,
     input  logic [riscv::PLEN-1:0]   paddr_i,           // physical address in
     input  exception_t               ex_i,
@@ -76,6 +77,7 @@ module store_unit import ariane_pkg::*; #(
 
     // output assignments
     assign vaddr_o    = lsu_ctrl_i.vaddr; // virtual address
+    assign data_dom_o = lsu_ctrl_i.data_dom; // JITDomain - feed-through data domain
     assign trans_id_o = trans_id_q; // transaction id from previous cycle
 
     always_comb begin : store_control
