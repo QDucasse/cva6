@@ -937,17 +937,10 @@ module csr_regfile import ariane_pkg::*; #(
         mstatus_d.sd   = (mstatus_q.xs == riscv::Dirty) | (mstatus_q.fs == riscv::Dirty);
 
         // reserve PMPCFG bits 5 and 6 (hardwire to 0)
-<<<<<<< HEAD
         for (int i = 0; i < CVA6Cfg.NrPMPEntries; i++) begin
             pmpcfg_d[i].reserved = 2'b0;
             dmpcfg_d[i].reserved = 1'b0;
         end
-=======
-        for (int i = 0; i < NrPMPEntries; i++) pmpcfg_d[i].reserved = 2'b0;
-        
-        // JITDomain - reserve DMPCFG bit 2 (hardwire to 0)
-        for (int i = 0; i < 4; i++) dmpcfg_d[i].reserved = 2'b0;
->>>>>>> 5157ddc9 (added code domain verification through a current domain csr and decoder check)
 
         // JITDomain - update current domain
         if (csr_write_dom_i) begin
