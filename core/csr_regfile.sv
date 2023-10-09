@@ -95,8 +95,10 @@ module csr_regfile import ariane_pkg::*; #(
     // PMPs
     output riscv::pmpcfg_t [15:0] pmpcfg_o,   // PMP configuration containing pmpcfg for max 16 PMPs
     output logic [15:0][riscv::PLEN-3:0] pmpaddr_o,           // PMP addresses
-    // JITDomain - DMP
+    // JITDomain - DMP/current domain
     output riscv::dmpcfg_t [15:0] dmpcfg_o,                   // DMP configs, tied to pmp regions
+    input  logic                  csr_write_dom_i,            // Write domain change (after a chdom or retdom)
+    output riscv::dmp_domain_t    curdom_o,                   // new current domain
     output logic [31:0] mcountinhibit_o
 );
     // internal signal to keep track of access exceptions
@@ -176,8 +178,9 @@ module csr_regfile import ariane_pkg::*; #(
     assign pmpcfg_o = pmpcfg_q[15:0];
     assign pmpaddr_o = pmpaddr_q;
 
-    // JITDomain - assign output
+    // JITDomain - registers
     assign dmpcfg_o = dmpcfg_q[15:0];
+    riscv::dmp_domain_t curdom_q, curdom_d;
 
     riscv::fcsr_t fcsr_q, fcsr_d;
     // ----------------
@@ -532,6 +535,8 @@ module csr_regfile import ariane_pkg::*; #(
         perf_data_o             = 'b0;
 
         fcsr_d                  = fcsr_q;
+
+        curdom_d                = curdom_q;  // JITDomain - curdom register
 
         priv_lvl_d              = priv_lvl_q;
         debug_mode_d            = debug_mode_q;
@@ -935,8 +940,14 @@ module csr_regfile import ariane_pkg::*; #(
         // reserve PMPCFG bits 5 and 6 (hardwire to 0)
         for (int i = 0; i < NrPMPEntries; i++) pmpcfg_d[i].reserved = 2'b0;
         
-        // reserve DMPCFG bit 2 (hardwire to 0)
+        // JITDomain - reserve DMPCFG bit 2 (hardwire to 0)
         for (int i = 0; i < 4; i++) dmpcfg_d[i].reserved = 2'b0;
+
+        // JITDomain - update current domain
+        if (csr_write_dom_i) begin
+            curdom_d = csr_wdata[1:0];
+        end
+
 
         // write the floating point status register
         if (CVA6Cfg.FpPresent && csr_write_fflags_i) begin
@@ -1351,6 +1362,8 @@ module csr_regfile import ariane_pkg::*; #(
     assign satp_ppn_o       = satp_q.ppn;
     assign asid_o           = satp_q.asid[AsidWidth-1:0];
     assign sum_o            = mstatus_q.sum;
+    // JITDomain outputs
+    assign curdom_o         = curdom_q;
     // we support bare memory addressing and SV39
     assign en_translation_o = (riscv::vm_mode_t'(satp_q.mode) == riscv::MODE_SV &&
                                priv_lvl_o != riscv::PRIV_LVL_M)
@@ -1427,6 +1440,8 @@ module csr_regfile import ariane_pkg::*; #(
             pmpaddr_q              <= '0;
             // JITDomain - dmp
             dmpcfg_q               <= '0;
+            // JITDomain - current domain
+            curdom_q               <= riscv::DOM0; 
         end else begin
             priv_lvl_q             <= priv_lvl_d;
             // floating-point registers
@@ -1469,7 +1484,9 @@ module csr_regfile import ariane_pkg::*; #(
             en_ld_st_translation_q <= en_ld_st_translation_d;
             // wait for interrupt
             wfi_q                  <= wfi_d;
-            // pmp
+            // JITDomain - current domain
+            curdom_q               <= curdom_d; 
+            // pmp -- + JITDomain dmp
             for(int i = 0; i < 16; i++) begin
                 if(i < NrPMPEntries) begin
                     // We only support >=8-byte granularity, NA4 is disabled

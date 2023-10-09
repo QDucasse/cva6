@@ -41,6 +41,7 @@ module commit_stage import ariane_pkg::*; #(
     input  riscv::xlen_t                            csr_rdata_i,        // data to read from CSR
     input  exception_t                              csr_exception_i,    // exception or interrupt occurred in CSR stage (the same as commit)
     output logic                                    csr_write_fflags_o, // write the fflags CSR
+    output logic                                    csr_write_dom_o,    // JITDomain - write the curdom CSR
     // commit signals to ex
     output logic                                    commit_lsu_o,       // commit the pending store
     input  logic                                    commit_lsu_ready_i, // commit buffer of LSU is ready
@@ -109,6 +110,7 @@ module commit_stage import ariane_pkg::*; #(
         fence_o            = 1'b0;
         sfence_vma_o       = 1'b0;
         csr_write_fflags_o = 1'b0;
+        csr_write_dom_o = 1'b0;
         flush_commit_o  = 1'b0;
 
         // we will not commit the instruction if we took an exception
@@ -206,6 +208,16 @@ module commit_stage import ariane_pkg::*; #(
                 flush_commit_o = amo_resp_i.ack;
                 amo_valid_commit_o = 1'b1;
                 we_gpr_o[0] = amo_resp_i.ack;
+            end
+            // ---------------------------
+            // JITDomain - DOMAIN change
+            // ---------------------------
+            if (commit_instr_i[0].chg_dom) begin
+                // write the CSR with new domain
+                csr_wdata_o = {{riscv::XLEN-2{1'b0}}, commit_instr_i[0].data_dom};
+                // flush_commit_o  = 1'b1; // flush the pipeline
+                csr_write_dom_o = 1'b1;
+                commit_ack_o[0] = 1'b1;
             end
         end
 
