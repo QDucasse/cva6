@@ -375,9 +375,12 @@ module cva6 import ariane_pkg::*; #(
   logic                     single_step_csr_commit;
   riscv::pmpcfg_t [15:0]    pmpcfg;
   logic [15:0][riscv::PLEN-3:0] pmpaddr;
+  logic [31:0]              mcountinhibit_csr_perf;
   // JITDomain
   riscv::dmpcfg_t [15:0]    dmpcfg;
-  logic [31:0]              mcountinhibit_csr_perf;
+  logic                     csr_write_dom_commit_cs;
+  riscv::dmp_domain_t       curdom;
+
   // ----------------------------
   // Performance Counters <-> *
   // ----------------------------
@@ -500,7 +503,8 @@ module cva6 import ariane_pkg::*; #(
     .debug_mode_i               ( debug_mode                 ),
     .tvm_i                      ( tvm_csr_id                 ),
     .tw_i                       ( tw_csr_id                  ),
-    .tsr_i                      ( tsr_csr_id                 )
+    .tsr_i                      ( tsr_csr_id                 ),
+    .curdom_i                   ( curdom                     )
   );
 
   logic [NrWbPorts-1:0][TRANS_ID_BITS-1:0] trans_id_ex_id;
@@ -755,6 +759,7 @@ module cva6 import ariane_pkg::*; #(
     .csr_wdata_o            ( csr_wdata_commit_csr          ),
     .csr_rdata_i            ( csr_rdata_csr_commit          ),
     .csr_write_fflags_o     ( csr_write_fflags_commit_cs    ),
+    .csr_write_dom_o        ( csr_write_dom_commit_cs       ),
     .csr_exception_i        ( csr_exception_csr_commit      ),
     .fence_i_o              ( fence_i_commit_controller     ),
     .fence_o                ( fence_commit_controller       ),
@@ -819,9 +824,11 @@ module cva6 import ariane_pkg::*; #(
     .perf_data_o            ( data_csr_perf                 ),
     .perf_data_i            ( data_perf_csr                 ),
     .perf_we_o              ( we_csr_perf                   ),
-    .dmpcfg_o               ( dmpcfg                        ),
     .pmpcfg_o               ( pmpcfg                        ),
     .pmpaddr_o              ( pmpaddr                       ),
+    .dmpcfg_o               ( dmpcfg                        ), // JITDomain - connections to/from CSR
+    .curdom_o               ( curdom                        ), //
+    .csr_write_dom_i        ( csr_write_dom_commit_cs       ), //
     .mcountinhibit_o        ( mcountinhibit_csr_perf        ),
     .debug_req_i,
     .ipi_i,

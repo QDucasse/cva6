@@ -41,13 +41,16 @@ module decoder import ariane_pkg::*; #(
     input  logic               tvm_i,                   // trap virtual memory
     input  logic               tw_i,                    // timeout wait
     input  logic               tsr_i,                   // trap sret
+    input  riscv::dmp_domain_t curdom_i,                // JITDomain - Current domain (from CSR)
     output scoreboard_entry_t  instruction_o,           // scoreboard entry to scoreboard
     output logic               is_control_flow_instr_o  // this instruction will change the control flow
+    
 );
     logic illegal_instr;
     logic illegal_instr_bm;
     logic illegal_instr_zic;
     logic illegal_instr_non_bm;
+    logic illegal_domain;       // JITDomain - Check if code domain complies with current domain
     // this instruction is an environment call (ecall), it is handled like an exception
     logic ecall;
     // this instruction is a software break-point
@@ -121,7 +124,8 @@ module decoder import ariane_pkg::*; #(
         ecall                       = 1'b0;
         ebreak                      = 1'b0;
         check_fprm                  = 1'b0;
-         // JITDomain - Default values
+        // JITDomain - Default values
+        illegal_domain              = 1'b0;          // illegal domain - ok by default
         instruction_o.code_dom      = riscv::DOMI;   // code domain - inclusive by default
         instruction_o.data_dom      = riscv::DOMI;   // data domain - inclusive by default
         instruction_o.chg_dom       = 1'b0;          // flag chgdom - does not change by default
@@ -830,8 +834,9 @@ module decoder import ariane_pkg::*; #(
                     imm_select = SIMM;
                     instruction_o.rs1[4:0]  = instr.stype.rs1;
                     instruction_o.rs2[4:0]  = instr.stype.rs2;
-                    instruction_o.code_dom  = riscv::DOM1;  // Executed from domain 1
-                    instruction_o.data_dom  = riscv::DOM1;  // Accesses data in domain 1
+                    instruction_o.code_dom  = riscv::DOM1;                    // Executed from domain 1
+                    instruction_o.data_dom  = riscv::DOM1;                    // Accesses data in domain 1
+                    illegal_domain = (curdom_i != riscv::DOMI) & (curdom_i != riscv::DOM1); // Check current domain is dom1
                     // determine store size
                     unique case (instr.stype.funct3)
                         3'b000: instruction_o.op  = ariane_pkg::SB1;
@@ -855,7 +860,8 @@ module decoder import ariane_pkg::*; #(
                     instruction_o.rs1[4:0] = instr.itype.rs1;
                     instruction_o.rd[4:0]  = instr.itype.rd;
                     instruction_o.code_dom  = riscv::DOM1;  // Executed from domain 1
-                    instruction_o.data_dom  = riscv::DOM1;  // Accesses data in domain 1
+                    instruction_o.data_dom  = riscv::DOM1;  // Should access data in domain 1
+                    illegal_domain = (curdom_i != riscv::DOMI) & (curdom_i != riscv::DOM1); // Check current domain is dom1
                     // determine load size and signed type
                     unique case (instr.itype.funct3)
                         3'b000: instruction_o.op  = ariane_pkg::LB1;
@@ -889,11 +895,13 @@ module decoder import ariane_pkg::*; #(
                             instruction_o.op  = ariane_pkg::RETDOM;
                             instruction_o.code_dom  = riscv::DOM1; // JITDomain - Executed from domain 1
                             instruction_o.data_dom  = riscv::DOM0; // JITDomain -Arrives in domain 0
+                            illegal_domain = (curdom_i != riscv::DOMI) & (curdom_i != riscv::DOM1); // Check current domain is dom1
                         end
                         3'b001: begin
                             instruction_o.op  = ariane_pkg::CHDOM;
                             instruction_o.code_dom  = riscv::DOM0; // JITDomain - Executed from domain 0
                             instruction_o.data_dom  = riscv::DOM1; // JITDomain -Arrives in domain 1
+                            illegal_domain = (curdom_i != riscv::DOMI) & (curdom_i != riscv::DOM0); // Check current domain is dom0
                         end
                         default: illegal_instr = 1'b1;
                     endcase
@@ -1389,6 +1397,11 @@ module decoder import ariane_pkg::*; #(
                 instruction_o.ex.valid = 1'b1;
                 // set breakpoint cause
                 instruction_o.ex.cause = riscv::BREAKPOINT;
+            end else if (illegal_domain) begin
+                // this exception is valid
+                instruction_o.ex.valid = 1'b1;
+                // TODO: JITDomain - add proper exception cause
+                instruction_o.ex.cause = riscv::ILLEGAL_INSTR;
             end
             // -----------------
             // Interrupt Control

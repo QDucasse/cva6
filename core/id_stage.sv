@@ -40,7 +40,8 @@ module id_stage #(
     input  logic                          debug_mode_i,        // we are in debug mode
     input  logic                          tvm_i,
     input  logic                          tw_i,
-    input  logic                          tsr_i
+    input  logic                          tsr_i,
+    input  riscv::dmp_domain_t            curdom_i             // JITDomain - current domain
 );
     // ID/ISSUE register stage
     typedef struct packed {
@@ -98,6 +99,7 @@ module id_stage #(
         .tvm_i,
         .tw_i,
         .tsr_i,
+        .curdom_i,
         .instruction_o           ( decoded_instruction          ),
         .is_control_flow_instr_o ( is_control_flow_instr        )
     );
