@@ -845,7 +845,7 @@ module decoder import ariane_pkg::*; #(
                         3'b011: if (riscv::XLEN==64) instruction_o.op  = ariane_pkg::SD1;
                                 else illegal_instr = 1'b1;
                         3'b111: begin
-                            if (riscv::XLEN==64) instruction_o.op  = ariane_pkg::SS;
+                            if (riscv::XLEN==64) instruction_o.op  = ariane_pkg::SST;
                             else illegal_instr = 1'b1;
                             instruction_o.data_dom  = riscv::DOM2; // Accesses data in domain 2
                         end
@@ -874,7 +874,7 @@ module decoder import ariane_pkg::*; #(
                         3'b011: if (riscv::XLEN==64) instruction_o.op  = ariane_pkg::LD1;
                                 else illegal_instr = 1'b1;
                         3'b111: begin
-                            if (riscv::XLEN==64) instruction_o.op  = ariane_pkg::LS;
+                            if (riscv::XLEN==64) instruction_o.op  = ariane_pkg::LST;
                             else illegal_instr = 1'b1;
                             instruction_o.data_dom  = riscv::DOM2; // Accesses data in domain 2
                         end

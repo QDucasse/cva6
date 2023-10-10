@@ -414,7 +414,7 @@ package ariane_pkg;
                                // Zicond instruction
                                CZERO_EQZ, CZERO_NEZ,
                                // JITDomain - LSU duplicated functions
-                               LD1, SD1, LW1, LWU1, SW1, LH1, LHU1, SH1, LB1, SB1, LBU1, LS, SS, CHDOM, RETDOM
+                               LD1, SD1, LW1, LWU1, SW1, LH1, LHU1, SH1, LB1, SB1, LBU1, LST, SST, CHDOM, RETDOM
                              } fu_op;
 
     typedef struct packed {
