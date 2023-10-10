@@ -944,9 +944,8 @@ module csr_regfile import ariane_pkg::*; #(
 
         // JITDomain - update current domain
         if (csr_write_dom_i) begin
-            curdom_d = csr_wdata[1:0];
+            curdom_d = riscv::dmp_domain_t'(csr_wdata[1:0]);
         end
-
 
         // write the floating point status register
         if (CVA6Cfg.FpPresent && csr_write_fflags_i) begin
