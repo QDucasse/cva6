@@ -259,12 +259,12 @@ module decoder_tb;
 
         // -------------------------------
         // 8th test batch: retdom decoding
-        instruction = 32'h0003105b; // retdom
+        instruction = 32'h0000805b; // retdom
 
         // 8.1 curdom = DOMI
         curdom = riscv::DOMI;
         #5ns;
-        assert(decoded_instruction.op == CHDOM);             // Correct opcode
+        assert(decoded_instruction.op == RETDOM);            // Correct opcode
         assert(decoded_instruction.ex.valid == 0);           // No exception
         assert(decoded_instruction.code_dom == riscv::DOM1); // Executed from domain 0
         assert(decoded_instruction.data_dom == riscv::DOM0); // Accesses domain 1

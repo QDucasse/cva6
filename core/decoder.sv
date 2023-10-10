@@ -790,6 +790,7 @@ module decoder import ariane_pkg::*; #(
                     instruction_o.rs1[4:0]  = instr.stype.rs1;
                     instruction_o.rs2[4:0]  = instr.stype.rs2;
                     instruction_o.data_dom  = riscv::DOM0; // JITDomain - Can only access data from domain 0
+                    illegal_domain = (curdom_i == riscv::DOM2); // Check current domain is dom0 or dom1
                     // determine store size
                     unique case (instr.stype.funct3)
                         3'b000: instruction_o.op  = ariane_pkg::SB;
@@ -807,6 +808,7 @@ module decoder import ariane_pkg::*; #(
                     instruction_o.rs1[4:0] = instr.itype.rs1;
                     instruction_o.rd[4:0]  = instr.itype.rd;
                     instruction_o.data_dom  = riscv::DOM0; // JITDomain - Can only access data from domain 0
+                    illegal_domain = (curdom_i == riscv::DOM2); // Check current domain is dom0 or dom1
                     // determine load size and signed type
                     unique case (instr.itype.funct3)
                         3'b000: instruction_o.op  = ariane_pkg::LB;
