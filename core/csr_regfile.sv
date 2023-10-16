@@ -945,6 +945,7 @@ module csr_regfile import ariane_pkg::*; #(
         // JITDomain - update current domain
         if (csr_write_dom_i) begin
             curdom_d = riscv::dmp_domain_t'(csr_wdata[1:0]);
+            // flush_o = 1'b1; // JITDomain, flush here?
         end
 
         // write the floating point status register
@@ -1439,7 +1440,7 @@ module csr_regfile import ariane_pkg::*; #(
             // JITDomain - dmp
             dmpcfg_q               <= '0;
             // JITDomain - current domain
-            curdom_q               <= riscv::DOM0; 
+            curdom_q               <= riscv::DOMI; 
         end else begin
             priv_lvl_q             <= priv_lvl_d;
             // floating-point registers

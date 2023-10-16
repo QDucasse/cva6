@@ -146,9 +146,17 @@ module decoder import ariane_pkg::*; #(
                             // decode the immiediate field
                             case (instr.itype.imm)
                                 // ECALL -> inject exception
-                                12'b0: ecall  = 1'b1;
+                                12'b0: begin
+                                    ecall  = 1'b1;
+                                    instruction_o.code_dom = riscv::DOM0;       // JITDomain, no syscalls in JIT code
+                                    illegal_domain = (curdom_i != riscv::DOMI) & (curdom_i != riscv::DOM0); // Check current domain is dom0
+                                end
                                 // EBREAK -> inject exception
-                                12'b1: ebreak = 1'b1;
+                                12'b1: begin
+                                    ebreak = 1'b1;
+                                    instruction_o.code_dom = riscv::DOM0;       // JITDomain, no system operations in JIT code
+                                    illegal_domain = (curdom_i != riscv::DOMI) & (curdom_i != riscv::DOM0); // Check current domain is dom0
+                                end
                                 // SRET
                                 12'b1_0000_0010: begin
                                     instruction_o.op = ariane_pkg::SRET;
@@ -920,6 +928,8 @@ module decoder import ariane_pkg::*; #(
                         imm_select = SIMM;
                         instruction_o.rs1[4:0] = instr.stype.rs1;
                         instruction_o.rs2[4:0] = instr.stype.rs2;
+                        instruction_o.data_dom  = riscv::DOM0; // JITDomain - Can only access data from domain 0
+                        illegal_domain = (curdom_i == riscv::DOM2); // Check current domain is dom0 or dom1
                         // determine store size
                         unique case (instr.stype.funct3)
                             // Only process instruction if corresponding extension is active (static)
@@ -943,6 +953,8 @@ module decoder import ariane_pkg::*; #(
                         imm_select = IIMM;
                         instruction_o.rs1[4:0] = instr.itype.rs1;
                         instruction_o.rd[4:0]  = instr.itype.rd;
+                        instruction_o.data_dom  = riscv::DOM0; // JITDomain - Can only access data from domain 0
+                        illegal_domain = (curdom_i == riscv::DOM2); // Check current domain is dom0 or dom1
                         // determine load size
                         unique case (instr.itype.funct3)
                             // Only process instruction if corresponding extension is active (static)
@@ -1227,6 +1239,7 @@ module decoder import ariane_pkg::*; #(
                     instruction_o.fu        = CTRL_FLOW;
                     instruction_o.rs1[4:0]  = instr.stype.rs1;
                     instruction_o.rs2[4:0]  = instr.stype.rs2;
+                    instruction_o.data_dom  = curdom_i;  // JITDomain, ensure base control flow do not change domain
 
                     is_control_flow_instr_o = 1'b1;
 
@@ -1250,6 +1263,7 @@ module decoder import ariane_pkg::*; #(
                     instruction_o.rs1[4:0]  = instr.itype.rs1;
                     imm_select              = IIMM;
                     instruction_o.rd[4:0]   = instr.itype.rd;
+                    instruction_o.data_dom  = curdom_i;  // JITDomain, ensure base control flow do not change domain
                     is_control_flow_instr_o = 1'b1;
                     // invalid jump and link register -> reserved for vector encoding
                     if (instr.itype.funct3 != 3'b0) illegal_instr = 1'b1;
@@ -1259,6 +1273,7 @@ module decoder import ariane_pkg::*; #(
                     instruction_o.fu        = CTRL_FLOW;
                     imm_select              = JIMM;
                     instruction_o.rd[4:0]   = instr.utype.rd;
+                    instruction_o.data_dom  = curdom_i;  // JITDomain, ensure base control flow do not change domain
                     is_control_flow_instr_o = 1'b1;
                 end
 
@@ -1391,7 +1406,8 @@ module decoder import ariane_pkg::*; #(
                 case (priv_lvl_i)
                     riscv::PRIV_LVL_M: instruction_o.ex.cause = riscv::ENV_CALL_MMODE;
                     riscv::PRIV_LVL_S: instruction_o.ex.cause = riscv::ENV_CALL_SMODE;
-                    riscv::PRIV_LVL_U: instruction_o.ex.cause = riscv::ENV_CALL_UMODE;
+                    riscv::PRIV_LVL_U: instruction_o.ex.cause = (illegal_domain) ? riscv::ILLEGAL_INSTR : riscv::ENV_CALL_UMODE;
+                    // JITDomain - when in user mode, 
                     default:; // this should not happen
                 endcase
             end else if (ebreak) begin

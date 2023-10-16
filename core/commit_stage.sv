@@ -237,7 +237,8 @@ module commit_stage import ariane_pkg::*; #(
                                 && !(commit_instr_i[0].fu inside {CSR})
                                 && !flush_dcache_i
                                 && !instr_0_is_amo
-                                && !single_step_i) begin
+                                && !single_step_i
+                                && !commit_instr_i[0].chg_dom) begin
                 // only if the first instruction didn't throw an exception and this instruction won't throw an exception
                 // and the functional unit is of type ALU, LOAD, CTRL_FLOW, MULT, FPU or FPU_VEC
                 if (!exception_o.valid && !commit_instr_i[1].ex.valid
