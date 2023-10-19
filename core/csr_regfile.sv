@@ -1441,7 +1441,7 @@ module csr_regfile import ariane_pkg::*; #(
             // JITDomain - dmp
             dmpcfg_q               <= '0;
             // JITDomain - current domain
-            curdom_q               <= riscv::DOMI; 
+            curdom_q               <= riscv::DOM0; 
         end else begin
             priv_lvl_q             <= priv_lvl_d;
             // floating-point registers
