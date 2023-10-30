@@ -77,7 +77,7 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
     input  logic [15:0][riscv::PLEN-3:0]    pmpaddr_i,
     // JitDomain
     input  riscv::dmpcfg_t [15:0]           dmpcfg_i,
-    input  riscv::dmp_domain_t              expected_dom_i
+    input  riscv::dmp_domain_t              lsu_expdom_i
 );
 
     logic                   iaccess_err;   // insufficient privilege to access this instruction page
@@ -243,7 +243,7 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
       .pmpaddr_i                ( pmpaddr_i             ),
       // JITDomain
       .dmpcfg_i                 ( dmpcfg_i              ),
-      .expected_dom_i      ( expected_dom_i   ),
+      .expdom_i                 ( riscv::DOMI           ),
       .bad_paddr_o              ( ptw_bad_paddr         )
 
 );
@@ -359,7 +359,7 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
         .pmpconf_i      ( pmpcfg_i                  ),
         // JITDomain
         .dmpconf_i      ( dmpcfg_i                  ),
-        .expected_dom_i ( riscv::DOMI               ),  // JITDomain - domi for now?
+        .expdom_i       ( riscv::DOMI               ),  // should use the domain !! icache_areq_o.fetch_dom
         .allow_o        ( pmp_instr_allow           )
     );
 
@@ -373,6 +373,7 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
     logic        lsu_is_store_n,  lsu_is_store_q;
     logic        dtlb_hit_n,      dtlb_hit_q;
     logic        dtlb_is_4M_n,    dtlb_is_4M_q;
+    riscv::dmp_domain_t lsu_expdom_n,  lsu_expdom_q; // JITDomain - internal signals  
 
     // check if we need to do translation or if we are always ready (e.g.: we are not translating anything)
     assign lsu_dtlb_hit_o = (en_ld_st_translation_i) ? dtlb_lu_hit :  1'b1;
@@ -391,6 +392,7 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
         dtlb_hit_n            = dtlb_lu_hit;
         lsu_is_store_n        = lsu_is_store_i;
         dtlb_is_4M_n          = dtlb_is_4M;
+        lsu_expdom_n          = lsu_expdom_i; // JITDomain - input
 
         if (riscv::PLEN > riscv::VLEN) begin
             lsu_paddr_o           = {{riscv::PLEN-riscv::VLEN{1'b0}}, lsu_vaddr_q};
@@ -503,7 +505,7 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
         .pmpconf_i      ( pmpcfg_i            ),
         // JITDomain
         .dmpconf_i      ( dmpcfg_i            ),
-        .expected_dom_i ( expected_dom_i      ),  // JITDomain
+        .expdom_i       ( lsu_expdom_q        ),  // JITDomain
         .allow_o        ( pmp_data_allow      )
     );
 
@@ -519,6 +521,7 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
             dtlb_hit_q       <= '0;
             lsu_is_store_q   <= '0;
             dtlb_is_4M_q     <= '0;
+            lsu_expdom_q     <= riscv::DOMI;
         end else begin
             lsu_vaddr_q      <=  lsu_vaddr_n;
             lsu_req_q        <=  lsu_req_n;
@@ -527,6 +530,7 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
             dtlb_hit_q       <=  dtlb_hit_n;
             lsu_is_store_q   <=  lsu_is_store_n;
             dtlb_is_4M_q     <=  dtlb_is_4M_n;
+            lsu_expdom_q     <=  lsu_expdom_n; // JITDomain - Keep expected domain!
         end
     end
 endmodule

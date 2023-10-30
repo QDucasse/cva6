@@ -172,7 +172,7 @@ module load_store_unit import ariane_pkg::*; #(
             .pmpaddr_i,
             // JITDomain
             .dmpcfg_i,
-            .expected_dom_i         ( mmu_data_dom           ),
+            .lsu_expdom_i           ( mmu_data_dom           ),
             .*
         );
     end else if (MMU_PRESENT && (riscv::XLEN == 32)) begin : gen_mmu_sv32
@@ -204,7 +204,7 @@ module load_store_unit import ariane_pkg::*; #(
             .pmpaddr_i,
             // JITDomain
             .dmpcfg_i,
-            .expected_dom_i         ( mmu_data_dom           ),
+            .lsu_expdom_i           ( mmu_data_dom           ),
             .*
         );
     end else begin : gen_no_mmu

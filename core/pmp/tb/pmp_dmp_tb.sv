@@ -37,7 +37,7 @@ module pmp_tb;
     logic [NR_ENTRIES-1:0][PMP_LEN-1:0] conf_addr;
     riscv::pmpcfg_t [NR_ENTRIES-1:0] conf_pmp;
     riscv::dmpcfg_t [NR_ENTRIES-1:0] conf_dmp;
-    riscv::dmp_domain_t expected_domain;
+    riscv::dmp_domain_t expdom_i;
 
 
 
@@ -56,7 +56,7 @@ module pmp_tb;
         .addr_i         ( addr              ),
         .access_type_i  ( access_type       ),
         .priv_lvl_i     ( riscv::PRIV_LVL_U ),
-        .expected_dom_i ( expected_domain   ),
+        .expdom_i       ( expdom_i   ),
         .conf_addr_i    ( conf_addr         ),
         .pmpconf_i      ( conf_pmp          ),
         .dmpconf_i      ( conf_dmp          ),
@@ -81,7 +81,7 @@ module pmp_tb;
         conf_pmp[0].access_type = riscv::ACCESS_READ | riscv::ACCESS_WRITE | riscv::ACCESS_EXEC;
 
         // 1.1 curdom = DOM0 | dmpcfg = DOM0
-        expected_domain=riscv::DOM0;
+        expdom_i=riscv::DOM0;
         conf_dmp[0].domain=riscv::DOM0;
         #5ns;
         assert(allow == 1);
@@ -99,7 +99,7 @@ module pmp_tb;
         assert(allow == 1);
 
         // 1.5 curdom = DOM1 | dmpcfg = DOM0
-        expected_domain=riscv::DOM1;
+        expdom_i=riscv::DOM1;
         conf_dmp[0].domain=riscv::DOM0;
         #5ns;
         assert(allow == 0);
@@ -117,7 +117,7 @@ module pmp_tb;
         assert(allow == 1);
 
         // 1.9 curdom = DOMI | dmpcfg = DOM0
-        expected_domain=riscv::DOMI;
+        expdom_i=riscv::DOMI;
         conf_dmp[0].domain=riscv::DOM0;
         #5ns;
         assert(allow == 1);
@@ -140,7 +140,7 @@ module pmp_tb;
         conf_pmp[0].access_type = riscv::ACCESS_EXEC; // No read access
 
         // 2.1 curdom = DOM0 | dmpcfg = DOM0
-        expected_domain=riscv::DOM0;
+        expdom_i=riscv::DOM0;
         conf_dmp[0].domain=riscv::DOM0;
         #5ns;
         assert(allow == 0);
@@ -158,7 +158,7 @@ module pmp_tb;
         assert(allow == 0);
 
         // 2.5 curdom = DOM1 | dmpcfg = DOM0
-        expected_domain=riscv::DOM1;
+        expdom_i=riscv::DOM1;
         conf_dmp[0].domain=riscv::DOM0;
         #5ns;
         assert(allow == 0);
@@ -176,7 +176,7 @@ module pmp_tb;
         assert(allow == 0);
 
         // 2.9 curdom = DOMI | dmpcfg = DOM0
-        expected_domain=riscv::DOMI;
+        expdom_i=riscv::DOMI;
         conf_dmp[0].domain=riscv::DOM0;
         #5ns;
         assert(allow == 0);

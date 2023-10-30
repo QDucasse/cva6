@@ -66,7 +66,7 @@ module mmu import ariane_pkg::*; #(
     input  logic [15:0][riscv::PLEN-3:0]    pmpaddr_i,
     // JitDomain
     input  riscv::dmpcfg_t [15:0]           dmpcfg_i,
-    input  riscv::dmp_domain_t              expected_dom_i
+    input  riscv::dmp_domain_t              lsu_expdom_i
 );
 
     logic                   iaccess_err;   // insufficient privilege to access this instruction page
@@ -176,7 +176,7 @@ module mmu import ariane_pkg::*; #(
         .pmpaddr_i,
         // JITDomain
         .dmpcfg_i,
-        .expected_dom_i,
+        .expdom_i               ( riscv::DOMI           ),
         .bad_paddr_o            ( ptw_bad_paddr         ),
         .*
     );
@@ -293,7 +293,7 @@ module mmu import ariane_pkg::*; #(
         .pmpconf_i      ( pmpcfg_i                  ),
         // JITDomain
         .dmpconf_i      ( dmpcfg_i                  ),
-        .expected_dom_i ( riscv::DOMI               ),  // JITDomain - pass the code domain?
+        .expdom_i       ( riscv::DOMI               ), // should use the domain !! icache_areq_o.fetch_dom
         .allow_o        ( pmp_instr_allow           )
     );
 
@@ -308,7 +308,7 @@ module mmu import ariane_pkg::*; #(
     logic        dtlb_hit_n,      dtlb_hit_q;
     logic        dtlb_is_2M_n,    dtlb_is_2M_q;
     logic        dtlb_is_1G_n,    dtlb_is_1G_q;
-    riscv::dmp_domain_t expected_dom_n,  expected_dom_q;  
+    riscv::dmp_domain_t lsu_expdom_n,  lsu_expdom_q; // JITDomain - internal signals  
 
     // check if we need to do translation or if we are always ready (e.g.: we are not translating anything)
     assign lsu_dtlb_hit_o = (en_ld_st_translation_i) ? dtlb_lu_hit :  1'b1;
@@ -328,7 +328,7 @@ module mmu import ariane_pkg::*; #(
         lsu_is_store_n        = lsu_is_store_i;
         dtlb_is_2M_n          = dtlb_is_2M;
         dtlb_is_1G_n          = dtlb_is_1G;
-        expected_dom_n        = expected_dom_i; // JITDomain - input
+        lsu_expdom_n          = lsu_expdom_i; // JITDomain - input
 
         lsu_paddr_o           = lsu_vaddr_q[riscv::PLEN-1:0];
         lsu_dtlb_ppn_o        = lsu_vaddr_n[riscv::PLEN-1:12];
@@ -446,7 +446,7 @@ module mmu import ariane_pkg::*; #(
         .pmpconf_i      ( pmpcfg_i            ),
         // JITDomain
         .dmpconf_i      ( dmpcfg_i            ),
-        .expected_dom_i ( expected_dom_q      ),  // JITDomain
+        .expdom_i       ( lsu_expdom_q        ),  // JITDomain
         .allow_o        ( pmp_data_allow      )
     );
 
@@ -463,7 +463,7 @@ module mmu import ariane_pkg::*; #(
             lsu_is_store_q   <= '0;
             dtlb_is_2M_q     <= '0;
             dtlb_is_1G_q     <= '0;
-            expected_dom_q   <= riscv::DOMI;
+            lsu_expdom_q     <= riscv::DOMI;
         end else begin
             lsu_vaddr_q      <=  lsu_vaddr_n;
             lsu_req_q        <=  lsu_req_n;
@@ -473,7 +473,7 @@ module mmu import ariane_pkg::*; #(
             lsu_is_store_q   <=  lsu_is_store_n;
             dtlb_is_2M_q     <=  dtlb_is_2M_n;
             dtlb_is_1G_q     <=  dtlb_is_1G_n;
-            expected_dom_q   <=  expected_dom_n; // JITDomain - Keep expected domain!
+            lsu_expdom_q     <=  lsu_expdom_n; // JITDomain - Keep expected domain!
         end
     end
 endmodule
