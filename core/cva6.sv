@@ -471,6 +471,7 @@ module cva6 import ariane_pkg::*; #(
     .fetch_entry_o       ( fetch_entry_if_id             ),
     .fetch_entry_valid_o ( fetch_valid_if_id             ),
     .fetch_entry_ready_i ( fetch_ready_id_if             ),
+    .curdom_i            ( curdom                        ),
     .*
   );
 

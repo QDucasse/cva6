@@ -651,11 +651,13 @@ package ariane_pkg;
         logic                     fetch_valid;     // address translation valid
         logic [riscv::PLEN-1:0]   fetch_paddr;     // physical address in
         exception_t               fetch_exception; // exception occurred during fetch
+        riscv::dmp_domain_t       fetch_expdom;    // JITDomain - Expected domain
     } icache_areq_t;
 
     typedef struct packed {
         logic                     fetch_req;       // address translation request
         logic [riscv::VLEN-1:0]   fetch_vaddr;     // virtual address out
+        riscv::dmp_domain_t       fetch_expdom;    // JITDomain - Expected domain
     } icache_arsp_t;
 
     // I$ data requests
@@ -665,6 +667,7 @@ package ariane_pkg;
         logic                     kill_s2;                // kill the last request
         logic                     spec;                   // request is speculative
         logic [riscv::VLEN-1:0]   vaddr;                  // 1st cycle: 12 bit index is taken for lookup
+        riscv::dmp_domain_t       expdom;                 // JITDomain - Expected domain
     } icache_dreq_t;
 
     typedef struct packed {

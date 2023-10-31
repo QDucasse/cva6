@@ -72,6 +72,7 @@ module cva6_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
   logic                                 cache_wren;                   // triggers write to cacheline
   logic                                 cmp_en_d, cmp_en_q;           // enable tag comparison in next cycle. used to cut long path due to NC signal.
   logic                                 flush_d, flush_q;             // used to register and signal pending flushes
+  riscv::dmp_domain_t                   expdom_d, expdom_q;           // JITDomain - Expected domain
 
   // replacement strategy
   logic                                 update_lfsr;                  // shift the LFSR
@@ -125,6 +126,10 @@ module cva6_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
   // make sure this is 32bit aligned
   assign vaddr_d = (dreq_o.ready & dreq_i.req) ? dreq_i.vaddr : vaddr_q;
   assign areq_o.fetch_vaddr = {vaddr_q>>2, 2'b0};
+
+  // JITDomain - pass expected domain to the translation req
+  assign expdom_d = (dreq_o.ready & dreq_i.req) ? dreq_i.expdom : expdom_q;
+  assign areq_o.fetch_expdom = expdom_q;
 
   // split virtual address into index and offset to address cache arrays
   assign cl_index    = vaddr_d[ICACHE_INDEX_WIDTH-1:ICACHE_OFFSET_WIDTH];
@@ -491,6 +496,7 @@ end else begin : gen_piton_offset
       cl_offset_q   <= '0;
       repl_way_oh_q <= '0;
       inv_q         <= '0;
+      expdom_q      <= riscv::DOMI;
     end else begin
       cl_tag_q      <= cl_tag_d;
       flush_cnt_q   <= flush_cnt_d;
@@ -502,6 +508,7 @@ end else begin : gen_piton_offset
       cl_offset_q   <= cl_offset_d;
       repl_way_oh_q <= repl_way_oh_d;
       inv_q         <= inv_d;
+      expdom_q       <= expdom_d; // JITDomain - expected domain
     end
   end
 
