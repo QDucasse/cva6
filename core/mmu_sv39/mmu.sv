@@ -213,6 +213,7 @@ module mmu import ariane_pkg::*; #(
         // MMU disabled: just pass through
         icache_areq_o.fetch_valid  = icache_areq_i.fetch_req;
         icache_areq_o.fetch_paddr  = icache_areq_i.fetch_vaddr[riscv::PLEN-1:0]; // play through in case we disabled address translation
+        icache_areq_o.fetch_expdom = icache_areq_i.fetch_expdom;
         // two potential exception sources:
         // 1. HPTW threw an exception -> signal with a page fault exception
         // 2. We got an access error because of insufficient permissions -> throw an access exception
@@ -290,14 +291,14 @@ module mmu import ariane_pkg::*; #(
         .addr_i         ( icache_areq_o.fetch_paddr ),
         .priv_lvl_i,
         // we will always execute on the instruction fetch port
-        .access_type_i  ( riscv::ACCESS_EXEC        ),
+        .access_type_i  ( riscv::ACCESS_EXEC         ),
         // Configuration
-        .conf_addr_i    ( pmpaddr_i                 ),
-        .pmpconf_i      ( pmpcfg_i                  ),
+        .conf_addr_i    ( pmpaddr_i                  ),
+        .pmpconf_i      ( pmpcfg_i                   ),
         // JITDomain
-        .dmpconf_i      ( dmpcfg_i                  ),
-        .expdom_i       ( riscv::DOMI               ), // should use the domain !! icache_areq_o.fetch_dom
-        .allow_o        ( pmp_instr_allow           )
+        .dmpconf_i      ( dmpcfg_i                   ),
+        .expdom_i       ( icache_areq_o.fetch_expdom ), // JITDomain - use the expected domain in the translation req
+        .allow_o        ( pmp_instr_allow            )
     );
 
     //-----------------------

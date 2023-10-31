@@ -39,6 +39,7 @@ module frontend import ariane_pkg::*; #(
   input  logic [riscv::VLEN-1:0] trap_vector_base_i, // base of trap vector
   input  logic               ex_valid_i,         // exception is valid - from commit
   input  logic               set_debug_pc_i,     // jump to debug address
+  input riscv::dmp_domain_t  curdom_i,           // JITDomain - Current domain
   // Instruction Fetch
   output icache_dreq_t     icache_dreq_o,
   input  icache_drsp_t     icache_dreq_i,
@@ -83,6 +84,8 @@ module frontend import ariane_pkg::*; #(
     logic [INSTR_PER_FETCH-1:0]       rvi_return, rvi_call, rvi_branch,
                                       rvi_jalr, rvi_jump;
     logic [INSTR_PER_FETCH-1:0][riscv::VLEN-1:0] rvi_imm;
+    // JITDomain - info from scan
+    logic [INSTR_PER_FETCH-1:0]       rvi_chdom, rvi_retdom;
     // RVC branching
     logic [INSTR_PER_FETCH-1:0]       rvc_branch, rvc_jump, rvc_jr, rvc_return,
                                       rvc_jalr, rvc_call;
@@ -151,12 +154,15 @@ module frontend import ariane_pkg::*; #(
     // for the return address stack it doens't matter as we have the
     // address of the call/return already
     logic bp_valid;
+    riscv::dmp_domain_t expdom_i; // JITDomain - Expected domain
 
     logic [INSTR_PER_FETCH-1:0] is_branch;
     logic [INSTR_PER_FETCH-1:0] is_call;
     logic [INSTR_PER_FETCH-1:0] is_jump;
     logic [INSTR_PER_FETCH-1:0] is_return;
     logic [INSTR_PER_FETCH-1:0] is_jalr;
+    logic [INSTR_PER_FETCH-1:0] is_chdom;  // JITDomain - scan chdom instruction
+    logic [INSTR_PER_FETCH-1:0] is_retdom; // JITDomain - scan retdom instruction
 
     for (genvar i = 0; i < INSTR_PER_FETCH; i++) begin
       // branch history table -> BHT
@@ -168,7 +174,11 @@ module frontend import ariane_pkg::*; #(
       // unconditional jumps with known target -> immediately resolved
       assign is_jump[i] = instruction_valid[i] & (rvi_jump[i] | rvc_jump[i]);
       // unconditional jumps with unknown target -> BTB
-      assign is_jalr[i] = instruction_valid[i] & ~is_return[i] & (rvi_jalr[i] | rvc_jalr[i] | rvc_jr[i]);
+      assign is_jalr[i] = instruction_valid[i] & ~is_return[i] & (rvi_jalr[i] | rvc_jalr[i] | rvc_jr[i] | rvi_chdom[i] | rvi_retdom[i]);
+      // JITDomain - domain change
+      assign is_chdom[i] = instruction_valid[i] & rvi_chdom[i];
+      // JITDomain - return domain
+      assign is_retdom[i] = instruction_valid[i] & rvi_retdom[i];
     end
 
     // taken/not taken
@@ -356,6 +366,7 @@ module frontend import ariane_pkg::*; #(
       // enter debug on a hard-coded base-address
       if (set_debug_pc_i) npc_d = ArianeCfg.DmBaseAddress[riscv::VLEN-1:0] + CVA6Cfg.HaltAddress[riscv::VLEN-1:0];
       icache_dreq_o.vaddr = fetch_address;
+      icache_dreq_o.expdom = riscv::DOMI;
     end
 
     logic [FETCH_WIDTH-1:0] icache_data;
@@ -465,6 +476,8 @@ module frontend import ariane_pkg::*; #(
         .rvi_jalr_o   ( rvi_jalr[i]   ),
         .rvi_jump_o   ( rvi_jump[i]   ),
         .rvi_imm_o    ( rvi_imm[i]    ),
+        .rvi_chdom_o  ( rvi_chdom[i]  ),
+        .rvi_retdom_o ( rvi_retdom[i] ),
         .rvc_branch_o ( rvc_branch[i] ),
         .rvc_jump_o   ( rvc_jump[i]   ),
         .rvc_jr_o     ( rvc_jr[i]     ),
