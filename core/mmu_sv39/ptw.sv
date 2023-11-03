@@ -65,7 +65,6 @@ module ptw import ariane_pkg::*; #(
     input  logic [15:0][riscv::PLEN-3:0] pmpaddr_i,
     // JITDomain
     input  riscv::dmpcfg_t [15:0]   dmpcfg_i,
-    input  riscv::dmp_domain_t      expdom_i,
     output logic [riscv::PLEN-1:0]  bad_paddr_o
 
 );

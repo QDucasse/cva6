@@ -176,7 +176,6 @@ module mmu import ariane_pkg::*; #(
         .pmpaddr_i,
         // JITDomain
         .dmpcfg_i,
-        .expdom_i               ( riscv::DOMI           ),
         .bad_paddr_o            ( ptw_bad_paddr         ),
         .*
     );

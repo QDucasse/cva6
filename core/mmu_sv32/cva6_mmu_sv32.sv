@@ -243,7 +243,6 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
       .pmpaddr_i                ( pmpaddr_i             ),
       // JITDomain
       .dmpcfg_i                 ( dmpcfg_i              ),
-      .expdom_i                 ( riscv::DOMI           ),
       .bad_paddr_o              ( ptw_bad_paddr         )
 
 );
@@ -277,6 +276,7 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
     always_comb begin : instr_interface
         // MMU disabled: just pass through
         icache_areq_o.fetch_valid  = icache_areq_i.fetch_req;
+        icache_areq_o.fetch_expdom = icache_areq_i.fetch_expdom;
         if (riscv::PLEN > riscv::VLEN)
             icache_areq_o.fetch_paddr = {{riscv::PLEN-riscv::VLEN{1'b0}}, icache_areq_i.fetch_vaddr};// play through in case we disabled address translation
         else
@@ -359,7 +359,7 @@ module cva6_mmu_sv32 import ariane_pkg::*; #(
         .pmpconf_i      ( pmpcfg_i                  ),
         // JITDomain
         .dmpconf_i      ( dmpcfg_i                  ),
-        .expdom_i       ( riscv::DOMI               ),  // should use the domain !! icache_areq_o.fetch_dom
+        .expdom_i       ( icache_areq_o.fetch_dom   ), // JITDomain - use the expected domain in the translation req
         .allow_o        ( pmp_instr_allow           )
     );
 
