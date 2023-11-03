@@ -19,16 +19,12 @@ module instr_scan #(
     parameter config_pkg::cva6_cfg_t CVA6Cfg = config_pkg::cva6_cfg_empty
 ) (
     input  logic [31:0] instr_i,        // expect aligned instruction, compressed or not
-    // input  riscv::dmp_domain_t curdom_i,  // JITDomain - input current domain
-    // output riscv::dmp_domain_t expdom_o,  // JITDomain - expected output domain
     output logic        rvi_return_o,
     output logic        rvi_call_o,
     output logic        rvi_branch_o,
     output logic        rvi_jalr_o,
     output logic        rvi_jump_o,
     output logic [riscv::VLEN-1:0] rvi_imm_o,
-    output logic        rvi_chdom_o,  // JITDomain - scanning for chdom/retdom
-    output logic        rvi_retdom_o, // 
     output logic        rvc_branch_o,
     output logic        rvc_jump_o,
     output logic        rvc_jr_o,
@@ -59,10 +55,6 @@ module instr_scan #(
 
     // opcode JAL
     assign rvc_jump_o   = ((instr_i[15:13] == riscv::OpcodeC1J) & is_rvc & (instr_i[1:0] == riscv::OpcodeC1)) | rv32_rvc_jal;
-
-    // opcode CHDOM
-    assign rvi_chdom_o = logic'(instr_i[6:0] == riscv::OpcodeChgDom) & (instr_i[14:12] == 3'b001);
-    assign rvi_retdom_o = logic'(instr_i[6:0] == riscv::OpcodeChgDom) & (instr_i[14:12] == 3'b000);
 
     // always links to register 0
     logic is_jal_r;
