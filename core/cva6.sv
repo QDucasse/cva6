@@ -643,6 +643,7 @@ module cva6 import ariane_pkg::*; #(
     .csr_valid_i            ( csr_valid_id_ex             ),
     .csr_addr_o             ( csr_addr_ex_csr             ),
     .csr_commit_i           ( csr_commit_commit_ex        ), // from commit
+    .curdom_i               ( curdom                      ), // JITDomain - current domain
     // MULT
     .mult_valid_i           ( mult_valid_id_ex            ),
     // LSU

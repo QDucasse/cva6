@@ -200,6 +200,7 @@ package ariane_pkg;
         logic                   is_mispredict;   // set if this was a mis-predict
         logic                   is_taken;        // branch is taken
         cf_t                    cf_type;         // Type of control flow change
+        riscv::dmp_domain_t     expdom;          // JITDomain - expected domain for IF
     } bp_resolve_t;
 
     // branchpredict scoreboard entry
@@ -437,9 +438,16 @@ package ariane_pkg;
     endfunction
 
     // JITDomain - Simplification for the branch unit
-    function automatic logic op_is_jalr (input fu_op op);
+    function automatic logic op_is_regjump (input fu_op op);
         unique case (op) inside
             JALR, CHDOM, RETDOM: return 1'b1;
+            default            : return 1'b0; // all other ctrl flow ops
+        endcase
+    endfunction
+
+    function automatic logic op_is_domchg (input fu_op op);
+        unique case (op) inside
+            CHDOM, RETDOM: return 1'b1;
             default            : return 1'b0; // all other ctrl flow ops
         endcase
     endfunction

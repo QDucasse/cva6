@@ -47,6 +47,7 @@ module ex_stage import ariane_pkg::*; #(
     input  logic                                   csr_valid_i,
     output logic [11:0]                            csr_addr_o,
     input  logic                                   csr_commit_i,
+    input  riscv::dmp_domain_t                     curdom_i,          // JITDomain - current domain, needed for classic control flow changes
     // MULT
     input  logic                                   mult_valid_i,      // Output is valid
     // LSU
@@ -192,6 +193,7 @@ module ex_stage import ariane_pkg::*; #(
         .fu_data_i,
         .pc_i,
         .is_compressed_instr_i,
+        .curdom_i,  // JITDomain - current domain, needed for classic control flow changes
         // any functional unit is valid, check that there is no accidental mis-predict
         .fu_valid_i ( alu_valid_i || lsu_valid_i || csr_valid_i || mult_valid_i || fpu_valid_i || acc_valid_i ) ,
         .branch_valid_i,
