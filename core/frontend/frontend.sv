@@ -337,7 +337,8 @@ module frontend import ariane_pkg::*; #(
       // 1. Default assignment
       if (if_ready) begin
         npc_d = {fetch_address[riscv::VLEN-1:2], 2'b0}  + 'h4;
-        expdom_d = curdom_i;
+        expdom_d = riscv::DOMI;
+        // expdom_d = curdom_i;
       end
       // 2. Replay instruction fetch
       if (replay) begin

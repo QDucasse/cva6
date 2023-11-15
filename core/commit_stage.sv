@@ -261,6 +261,13 @@ module commit_stage import ariane_pkg::*; #(
 
                         csr_write_fflags_o = 1'b1;
                     end
+                    if (commit_instr_i[1].chg_dom) begin
+                        // write the CSR with new domain
+                        csr_wdata_o = {{riscv::XLEN-2{1'b0}}, commit_instr_i[1].data_dom};
+                        // flush_commit_o  = 1'b1; // flush the pipeline
+                        csr_write_dom_o = 1'b1;
+                        commit_ack_o[1] = 1'b1;
+                    end
                 end
             end
         end
