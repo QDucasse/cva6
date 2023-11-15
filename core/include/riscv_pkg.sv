@@ -453,6 +453,19 @@ package riscv;
         CSR_PMPADDR13      = 12'h3BD,
         CSR_PMPADDR14      = 12'h3BE,
         CSR_PMPADDR15      = 12'h3BF,
+
+        // From RISC-V privileged standards:
+        // 0x7C0-0x7FF: Custom Read/Write
+        // 0xFC0-0xFFF: Custom Read-Only
+        // CSR_DMPCFG0        = 12'h7C3,  // JITDomain - dmp config0
+        // CSR_DMPCFG1        = 12'h7C4,  // JITDomain - dmp config1
+        // CSR_CURDOM         = 12'hFC0,  // JITDomain - current domain
+        // Does not work with correct codes :(
+        CSR_DMPCFG0        = 12'h3F0,
+        CSR_DMPCFG1        = 12'h3F1,
+        CSR_CURDOM         = 12'hF00,
+
+
         CSR_MVENDORID      = 12'hF11,
         CSR_MARCHID        = 12'hF12,
         CSR_MIMPID         = 12'hF13,
