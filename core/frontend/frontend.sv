@@ -316,6 +316,7 @@ module frontend import ariane_pkg::*; #(
       if (npc_rst_load_q) begin
         npc_d         = boot_addr_i;
         fetch_address = boot_addr_i;
+        expdom_d      = riscv::DOMI;
         fetch_expdom  = riscv::DOMI; // JITDomain
       end else begin
         fetch_address    = npc_q;
@@ -330,16 +331,18 @@ module frontend import ariane_pkg::*; #(
         fetch_address = predict_address;
         npc_d = predict_address;
         // JITDomain - Expected domain in the case of a branch prediction (classic control flow)
-        fetch_expdom = predict_expdom;
-        expdom_d     = predict_expdom;
+        fetch_expdom = curdom_i;
+        expdom_d     = curdom_i;
       end
       // 1. Default assignment
       if (if_ready) begin
         npc_d = {fetch_address[riscv::VLEN-1:2], 2'b0}  + 'h4;
+        expdom_d = curdom_i;
       end
       // 2. Replay instruction fetch
       if (replay) begin
         npc_d = replay_addr;
+        expdom_d = curdom_i;
       end
       // 3. Control flow change request
       if (is_mispredict) begin
@@ -349,10 +352,12 @@ module frontend import ariane_pkg::*; #(
       // 4. Return from environment call
       if (eret_i) begin
         npc_d = epc_i;
+        expdom_d = riscv::DOMI;
       end
       // 5. Exception/Interrupt
       if (ex_valid_i) begin
         npc_d = trap_vector_base_i;
+        expdom_d = riscv::DOMI;
       end
       // 6. Pipeline Flush because of CSR side effects
       // On a pipeline flush start fetching from the next address
@@ -365,10 +370,14 @@ module frontend import ariane_pkg::*; #(
       // TODO(zarubaf) This adder can at least be merged with the one in the csr_regfile stage
       if (set_pc_commit_i) begin
         npc_d = pc_commit_i + (halt_i ? '0 : {{riscv::VLEN-3{1'b0}}, 3'b100});
+        expdom_d = riscv::DOMI;
       end
       // 7. Debug
       // enter debug on a hard-coded base-address
-      if (set_debug_pc_i) npc_d = CVA6Cfg.DmBaseAddress[riscv::VLEN-1:0] + CVA6Cfg.HaltAddress[riscv::VLEN-1:0];
+      if (set_debug_pc_i) begin
+        npc_d = CVA6Cfg.DmBaseAddress[riscv::VLEN-1:0] + CVA6Cfg.HaltAddress[riscv::VLEN-1:0];
+        expdom_d = riscv::DOMI;
+      end
       icache_dreq_o.vaddr = fetch_address;
       icache_dreq_o.expdom = fetch_expdom;
     end
