@@ -52,8 +52,8 @@ ifeq ($(support_verilator_4), 0)
 	verilator_threads := 1
 endif
 # Location of Verilator headers and optional source files
-# VL_INC_DIR := $(VERILATOR_INSTALL_DIR)/share/verilator/include
-VL_INC_DIR := $(VERILATOR_ROOT)/include
+VL_INC_DIR := $(VERILATOR_INSTALL_DIR)/share/verilator/include
+# VL_INC_DIR := $(VERILATOR_ROOT)/include
 
 ifndef RISCV
 $(error RISCV not set - please point your RISCV variable to your RISCV installation)
