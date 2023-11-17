@@ -425,8 +425,7 @@ package ariane_pkg;
         riscv::xlen_t             operand_b;
         riscv::xlen_t             imm;
         logic [TRANS_ID_BITS-1:0] trans_id;
-        riscv::dmp_domain_t       code_dom; // JITDomain - Information passed to the functional units
-        riscv::dmp_domain_t       data_dom; //
+        riscv::dmp_domain_t       target_dom; // JITDomain - Information passed to the functional units
         logic                     chg_dom;  //
     } fu_data_t;
 
@@ -534,7 +533,6 @@ package ariane_pkg;
         fu_t                            fu;
         fu_op                           operation;
         logic [TRANS_ID_BITS-1:0]       trans_id;
-        riscv::dmp_domain_t             code_dom;
         riscv::dmp_domain_t             data_dom;
     } lsu_ctrl_t;
 
@@ -585,8 +583,7 @@ package ariane_pkg;
         logic                       vfp;         // is this a vector floating-point instruction?
 
                                                  // JITDomain related fields
-        riscv::dmp_domain_t code_dom;            // associated code domain        (should be executed from)
-        riscv::dmp_domain_t data_dom;            // associated data domain        (should access data in)
+        riscv::dmp_domain_t target_dom;          // associated target domain      (should access this domain - through data or fetch)
         logic               chg_dom;             // flag to change internal state (should change domain)
     } scoreboard_entry_t;
 

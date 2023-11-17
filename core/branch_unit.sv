@@ -83,7 +83,7 @@ module branch_unit #(
                 if (branch_predict_i.cf != ariane_pkg::Return) resolved_branch_o.cf_type = ariane_pkg::JumpR;
                 // JITDomain - Expected domain setup
                 if (ariane_pkg::op_is_domchg(fu_data_i.operation)) begin
-                    resolved_branch_o.expdom = fu_data_i.data_dom;
+                    resolved_branch_o.expdom = fu_data_i.target_dom;
                 end
             end
             // to resolve the branch in ID

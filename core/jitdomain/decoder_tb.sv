@@ -57,9 +57,8 @@ module decoder_tb;
         curdom = riscv::DOMI;
         #5ns;
         assert(decoded_instruction.op == LB);                // Correct opcode
-        assert(decoded_instruction.ex.valid == 0);           // No exception
-        assert(decoded_instruction.code_dom == riscv::DOMI); // Executed from domain 0/1
-        assert(decoded_instruction.data_dom == riscv::DOM0); // Accesses domain 0
+        assert(decoded_instruction.ex.valid == 0);           // No exception - Executed from domain 0/1
+        assert(decoded_instruction.target_dom == riscv::DOM0); // Accesses domain 0
         assert(decoded_instruction.chg_dom  == 0);           // Should not change dom
 
         // 1.2 curdom = DOM0
@@ -86,9 +85,8 @@ module decoder_tb;
         curdom = riscv::DOMI;
         #5ns;
         assert(decoded_instruction.op == SB);                // Correct opcode
-        assert(decoded_instruction.ex.valid == 0);           // No exception
-        assert(decoded_instruction.code_dom == riscv::DOMI); // Executed from domain 0/1
-        assert(decoded_instruction.data_dom == riscv::DOM0); // Accesses domain 0
+        assert(decoded_instruction.ex.valid == 0);           // No exception - Executed from domain 0/1
+        assert(decoded_instruction.target_dom == riscv::DOM0); // Accesses domain 0
         assert(decoded_instruction.chg_dom  == 0);           // Should not change dom
 
         // 2.2 curdom = DOM0
@@ -115,9 +113,8 @@ module decoder_tb;
         curdom = riscv::DOMI;
         #5ns;
         assert(decoded_instruction.op == LB1);               // Correct opcode
-        assert(decoded_instruction.ex.valid == 0);           // No exception
-        assert(decoded_instruction.code_dom == riscv::DOM1); // Executed from domain 1
-        assert(decoded_instruction.data_dom == riscv::DOM1); // Accesses domain 1
+        assert(decoded_instruction.ex.valid == 0);           // No exception - Executed from domain 1
+        assert(decoded_instruction.target_dom == riscv::DOM1); // Accesses domain 1
         assert(decoded_instruction.chg_dom  == 0);           // Should not change dom
 
         // 3.2 curdom = DOM0
@@ -145,9 +142,8 @@ module decoder_tb;
         curdom = riscv::DOMI;
         #5ns;
         assert(decoded_instruction.op == SB1);               // Correct opcode
-        assert(decoded_instruction.ex.valid == 0);           // No exception
-        assert(decoded_instruction.code_dom == riscv::DOM1); // Executed from domain 1
-        assert(decoded_instruction.data_dom == riscv::DOM1); // Accesses domain 1
+        assert(decoded_instruction.ex.valid == 0);           // No exception - Executed from domain 1
+        assert(decoded_instruction.target_dom == riscv::DOM1); // Accesses domain 1
         assert(decoded_instruction.chg_dom  == 0);           // Should not change dom
 
         // 4.2 curdom = DOM0
@@ -175,9 +171,8 @@ module decoder_tb;
         curdom = riscv::DOMI;
         #5ns;
         assert(decoded_instruction.op == LST);               // Correct opcode
-        assert(decoded_instruction.ex.valid == 0);           // No exception
-        assert(decoded_instruction.code_dom == riscv::DOM1); // Executed from domain 1
-        assert(decoded_instruction.data_dom == riscv::DOM2); // Accesses domain 2
+        assert(decoded_instruction.ex.valid == 0);           // No exception - Executed from domain 1
+        assert(decoded_instruction.target_dom == riscv::DOM2); // Accesses domain 2
         assert(decoded_instruction.chg_dom  == 0);           // Should not change dom
 
         // 5.2 curdom = DOM0
@@ -205,9 +200,8 @@ module decoder_tb;
         curdom = riscv::DOMI;
         #5ns;
         assert(decoded_instruction.op == SST);               // Correct opcode
-        assert(decoded_instruction.ex.valid == 0);           // No exception
-        assert(decoded_instruction.code_dom == riscv::DOM1); // Executed from domain 1
-        assert(decoded_instruction.data_dom == riscv::DOM2); // Accesses domain 2
+        assert(decoded_instruction.ex.valid == 0);           // No exception - Executed from domain 1
+        assert(decoded_instruction.target_dom == riscv::DOM2); // Accesses domain 2
         assert(decoded_instruction.chg_dom  == 0);           // Should not change dom
 
         // 6.2 curdom = DOM0
@@ -235,9 +229,8 @@ module decoder_tb;
         curdom = riscv::DOMI;
         #5ns;
         assert(decoded_instruction.op == CHDOM);             // Correct opcode
-        assert(decoded_instruction.ex.valid == 0);           // No exception
-        assert(decoded_instruction.code_dom == riscv::DOM0); // Executed from domain 0
-        assert(decoded_instruction.data_dom == riscv::DOM1); // Accesses domain 1
+        assert(decoded_instruction.ex.valid == 0);           // No exception - Executed from domain 0
+        assert(decoded_instruction.target_dom == riscv::DOM1); // Accesses domain 1
         assert(decoded_instruction.chg_dom  == 1);           // Should change dom
 
         // 7.2 curdom = DOM0
@@ -265,9 +258,8 @@ module decoder_tb;
         curdom = riscv::DOMI;
         #5ns;
         assert(decoded_instruction.op == RETDOM);            // Correct opcode
-        assert(decoded_instruction.ex.valid == 0);           // No exception
-        assert(decoded_instruction.code_dom == riscv::DOM1); // Executed from domain 0
-        assert(decoded_instruction.data_dom == riscv::DOM0); // Accesses domain 1
+        assert(decoded_instruction.ex.valid == 0);           // No exception - Executed from domain 0
+        assert(decoded_instruction.target_dom == riscv::DOM0); // Accesses domain 1
         assert(decoded_instruction.chg_dom  == 1);           // Should change dom
 
         // 8.2 curdom = DOM0

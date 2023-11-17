@@ -256,6 +256,11 @@ package riscv;
     localparam OpcodeRsrvd3    = 7'b11_101_11;
     localparam OpcodeCustom3   = 7'b11_110_11;
 
+    // JITDomain Aliases for opcodes
+    localparam OpcodeLoad1     = OpcodeCustom0; // custom0 for all loads
+    localparam OpcodeStore1    = OpcodeCustom1; // custom1 for all stores
+    localparam OpcodeChgDom    = OpcodeCustom2; // custom2 for domain changes
+
     // RV64C/RV32C listings:
     // Quadrant 0
     localparam OpcodeC0             = 2'b00;

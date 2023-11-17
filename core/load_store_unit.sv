@@ -487,7 +487,7 @@ module load_store_unit import ariane_pkg::*; #(
     // new data arrives here
     lsu_ctrl_t lsu_req_i;
 
-    assign lsu_req_i = {lsu_valid_i, vaddr_i, overflow, fu_data_i.operand_b, be_i, fu_data_i.fu, fu_data_i.operation, fu_data_i.trans_id, fu_data_i.code_dom, fu_data_i.data_dom};
+    assign lsu_req_i = {lsu_valid_i, vaddr_i, overflow, fu_data_i.operand_b, be_i, fu_data_i.fu, fu_data_i.operation, fu_data_i.trans_id, fu_data_i.target_dom};
 
     lsu_bypass #(
         .CVA6Cfg    ( CVA6Cfg    )
