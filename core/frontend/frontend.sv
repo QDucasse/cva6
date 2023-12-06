@@ -353,12 +353,12 @@ module frontend import ariane_pkg::*; #(
       // 4. Return from environment call
       if (eret_i) begin
         npc_d = epc_i;
-        expdom_d = riscv::DOMI;
+        expdom_d = curdom_i;
       end
       // 5. Exception/Interrupt
       if (ex_valid_i) begin
         npc_d = trap_vector_base_i;
-        expdom_d = riscv::DOMI;
+        expdom_d = riscv::DOM0;
       end
       // 6. Pipeline Flush because of CSR side effects
       // On a pipeline flush start fetching from the next address
@@ -377,7 +377,7 @@ module frontend import ariane_pkg::*; #(
       // enter debug on a hard-coded base-address
       if (set_debug_pc_i) begin
         npc_d = CVA6Cfg.DmBaseAddress[riscv::VLEN-1:0] + CVA6Cfg.HaltAddress[riscv::VLEN-1:0];
-        expdom_d = riscv::DOMI;
+        expdom_d = curdom_i;
       end
       icache_dreq_o.vaddr = fetch_address;
       icache_dreq_o.expdom = fetch_expdom;
