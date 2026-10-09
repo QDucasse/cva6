@@ -617,6 +617,10 @@ module cva6
   logic single_step_csr_commit;
   riscv::pmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] pmpcfg;
   logic [avoid_neg(CVA6Cfg.NrPMPEntries-1):0][CVA6Cfg.PLEN-3:0] pmpaddr;
+  // JITDomain
+  riscv::dmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] dmpcfg;
+  logic csr_write_dom_commit_cs;
+  riscv::dmp_domain_t curdom;
   logic [31:0] mcountinhibit_csr_perf;
   //jvt
   jvt_t jvt;
@@ -1187,6 +1191,7 @@ module cva6
       .csr_wdata_o                        (csr_wdata_commit_csr),
       .csr_rdata_i                        (csr_rdata_csr_commit),
       .csr_write_fflags_o                 (csr_write_fflags_commit_cs),
+      .csr_write_dom_o                    (csr_write_dom_commit_cs),
       .csr_exception_i                    (csr_exception_csr_commit),
       .commit_lsu_o                       (lsu_commit_commit_ex),
       .commit_lsu_ready_i                 (lsu_commit_ready_ex_commit),
@@ -1308,6 +1313,9 @@ module cva6
       .perf_we_o                          (we_csr_perf),
       .pmpcfg_o                           (pmpcfg),
       .pmpaddr_o                          (pmpaddr),
+      .dmpcfg_o                           (dmpcfg),                   // JITDomain - connections to/from CSR
+      .curdom_o                           (curdom),
+      .csr_write_dom_i                    (csr_write_dom_commit_cs),
       .mcountinhibit_o                    (mcountinhibit_csr_perf),
       .mcbie_o                            (mcbie),
       .scbie_o                            (scbie),

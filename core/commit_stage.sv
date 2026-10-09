@@ -62,6 +62,8 @@ module commit_stage
     input logic [CVA6Cfg.XLEN-1:0] csr_rdata_i,
     // Write the fflags CSR - CSR_REGFILE
     output logic csr_write_fflags_o,
+    // JITDomain - Write the curdom CSR - CSR_REGFILE
+    output logic csr_write_dom_o,
     // Exception or interrupt occurred in CSR stage (the same as commit) - CSR_REGFILE
     input exception_t csr_exception_i,
     // Commit the pending store - EX_STAGE
@@ -163,6 +165,7 @@ module commit_stage
     hfence_vvma_o = 1'b0;
     hfence_gvma_o = 1'b0;
     csr_write_fflags_o = 1'b0;
+    csr_write_dom_o = 1'b0;
     flush_commit_o = 1'b0;
 
     // we do not commit the instruction yet if we requested a halt
@@ -311,6 +314,16 @@ module commit_stage
           amo_valid_commit_o = 1'b1;
           we_gpr_o[0] = amo_resp_i.ack;
         end
+        // ---------------------------
+        // JITDomain - DOMAIN change
+        // ---------------------------
+        if (commit_instr_i[0].chg_dom) begin
+          // write the CSR with new domain
+          csr_wdata_o = {{CVA6Cfg.XLEN - 2{1'b0}}, commit_instr_i[0].target_dom};
+          // flush_commit_o  = 1'b1; // flush the pipeline
+          csr_write_dom_o = 1'b1;
+          commit_ack_o[0] = 1'b1;
+        end
       end
     end
 
@@ -331,6 +344,7 @@ module commit_stage
                                 && !flush_dcache_i
                                 && !(CVA6Cfg.RVA && instr_0_is_amo)
                                 && !single_step_i
+                                && !commit_instr_i[0].chg_dom
                                 && !(CVA6Cfg.Sdtrig && sdtrig_commit_icount_valid_i && sdtrig_commit_icount_nr_instr_i < CVA6Cfg.NrCommitPorts)
                                 && (CVA6Cfg.SdtrigMcontrol6LoadData ? !commit_instr_i[0].ex.timing : !CVA6Cfg.SdtrigMcontrol6LoadData)) begin
         // only if the first instruction didn't throw an exception and this instruction won't throw an exception
@@ -360,6 +374,13 @@ module commit_stage
                 else csr_wdata_o = {{CVA6Cfg.XLEN - 5{1'b0}}, commit_instr_i[1].ex.cause[4:0]};
                 csr_write_fflags_o = 1'b1;
               end
+            end
+            if (commit_instr_i[1].chg_dom) begin
+              // write the CSR with new domain
+              csr_wdata_o = {{CVA6Cfg.XLEN - 2{1'b0}}, commit_instr_i[1].target_dom};
+              // flush_commit_o  = 1'b1; // flush the pipeline
+              csr_write_dom_o = 1'b1;
+              commit_ack_o[1] = 1'b1;
             end
           end
         end
