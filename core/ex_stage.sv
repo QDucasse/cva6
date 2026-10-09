@@ -86,6 +86,8 @@ module ex_stage
     output logic [11:0] csr_addr_o,
     // CSR commit - COMMIT_STAGE
     input logic csr_commit_i,
+    // JITDomain - Current domain, needed for classic control flow changes - CSR_REGFILE
+    input riscv::dmp_domain_t curdom_i,
     // MULT instruction is valid - ISSUE_STAGE
     input logic [CVA6Cfg.NrIssuePorts-1:0] mult_valid_i,
     // LSU is ready - ISSUE_STAGE
@@ -370,6 +372,7 @@ module ex_stage
       .pc_i,
       .is_zcmt_i,
       .is_compressed_instr_i,
+      .curdom_i,
       .branch_valid_i    (|branch_valid_i),
       .branch_comp_res_i (alu_branch_res),
       .branch_result_o   (branch_result),
