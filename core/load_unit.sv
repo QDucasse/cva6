@@ -53,6 +53,8 @@ module load_unit
     output logic translation_req_o,
     // Virtual address - MMU
     output logic [CVA6Cfg.VLEN-1:0] vaddr_o,
+    // JITDomain - Data domain info - MMU
+    output riscv::dmp_domain_t data_dom_o,
     // Transformed trap instruction out - MMU
     output logic [31:0] tinst_o,
     // Instruction is a hyp load store instruction - MMU
@@ -202,6 +204,8 @@ module load_unit
   assign page_offset_o = lsu_ctrl_i.vaddr[11:0];
   // feed-through the virtual address for VA translation
   assign vaddr_o = lsu_ctrl_i.vaddr;
+  // JITDomain - feed-through the expected data domain
+  assign data_dom_o = lsu_ctrl_i.data_dom;
   assign hs_ld_st_inst_o = CVA6Cfg.RVH ? lsu_ctrl_i.hs_ld_st_inst : 1'b0;
   assign hlvx_inst_o = CVA6Cfg.RVH ? lsu_ctrl_i.hlvx_inst : 1'b0;
   // feed-through the transformed instruction for mmu

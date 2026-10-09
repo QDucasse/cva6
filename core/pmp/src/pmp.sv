@@ -21,9 +21,11 @@ module pmp
     input logic [CVA6Cfg.PLEN-1:0] addr_i,
     input riscv::pmp_access_t access_type_i,
     input riscv::priv_lvl_t priv_lvl_i,
+    input riscv::dmp_domain_t expdom_i,  // JITDomain - expected domain of the access
     // Configuration
     input logic [avoid_neg(CVA6Cfg.NrPMPEntries-1):0][CVA6Cfg.PLEN-3:0] conf_addr_i,
     input riscv::pmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] conf_i,
+    input riscv::dmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] dmpconf_i,  // JITDomain
     // Output
     output logic allow_o
 );
@@ -54,9 +56,14 @@ module pmp
       for (i = 0; i < CVA6Cfg.NrPMPEntries; i++) begin
         // either we are in S or U mode or the config is locked in which
         // case it also applies in M mode
-        if (priv_lvl_i != riscv::PRIV_LVL_M || conf_i[i].locked) begin
+        if (priv_lvl_i != riscv::PRIV_LVL_M || (conf_i[i].locked && dmpconf_i[i].locked)) begin
           if (match[i]) begin
-            if ((access_type_i & conf_i[i].access_type) != access_type_i) allow_o = 1'b0;
+            if (((access_type_i & conf_i[i].access_type) != access_type_i)
+                // JITDomain - the region domain must match the expected domain (DOMI matches all)
+                || ((dmpconf_i[i].domain != riscv::DOMI)
+                    & (expdom_i != riscv::DOMI)
+                    & (expdom_i != dmpconf_i[i].domain)))
+              allow_o = 1'b0;
             else allow_o = 1'b1;
             break;
           end

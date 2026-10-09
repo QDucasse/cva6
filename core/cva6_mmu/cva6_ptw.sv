@@ -86,6 +86,8 @@ module cva6_ptw
     // PMP
     input riscv::pmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] pmpcfg_i,
     input logic [avoid_neg(CVA6Cfg.NrPMPEntries-1):0][CVA6Cfg.PLEN-3:0] pmpaddr_i,
+    // JITDomain - DMP configuration - CSR_REGFILE
+    input riscv::dmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] dmpcfg_i,
     output logic [CVA6Cfg.PLEN-1:0] bad_paddr_o,
     output logic [CVA6Cfg.GPLEN-1:0] bad_gpaddr_o
 );
@@ -259,6 +261,9 @@ module cva6_ptw
       // Configuration
       .conf_addr_i  (pmpaddr_i),
       .conf_i       (pmpcfg_i),
+      // JITDomain - domi for now (no paging)?
+      .dmpconf_i    (dmpcfg_i),
+      .expdom_i     (riscv::DOMI),
       .allow_o      (allow_access)
   );
 

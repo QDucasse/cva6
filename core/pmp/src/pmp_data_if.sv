@@ -28,6 +28,7 @@ module pmp_data_if
     input exception_t lsu_exception_i,  // lsu exception coming from MMU, or misaligned exception
     input logic lsu_is_store_i,  // the translation is requested by a store
     input logic lsu_hlvx_inst_i,
+    input riscv::dmp_domain_t lsu_data_dom_i,  // JITDomain - expected data domain
     output logic lsu_valid_o,  // translation is valid
     output logic [CVA6Cfg.PLEN-1:0] lsu_paddr_o,  // translated address
     output exception_t lsu_exception_o,  // address translation threw an exception
@@ -38,7 +39,9 @@ module pmp_data_if
     input logic ld_st_v_i,
     // PMP
     input riscv::pmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] pmpcfg_i,
-    input logic [avoid_neg(CVA6Cfg.NrPMPEntries-1):0][CVA6Cfg.PLEN-3:0] pmpaddr_i
+    input logic [avoid_neg(CVA6Cfg.NrPMPEntries-1):0][CVA6Cfg.PLEN-3:0] pmpaddr_i,
+    // JITDomain - DMP
+    input riscv::dmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] dmpcfg_i
 );
   // virtual address causing the exception
   logic [CVA6Cfg.XLEN-1:0] fetch_vaddr_xlen, lsu_vaddr_xlen;
@@ -76,6 +79,7 @@ module pmp_data_if
     icache_areq_o.fetch_valid     = icache_areq_i.fetch_valid;
     icache_areq_o.fetch_paddr     = icache_areq_i.fetch_paddr;
     icache_areq_o.fetch_exception = icache_areq_i.fetch_exception;
+    icache_areq_o.fetch_expdom    = icache_areq_i.fetch_expdom;
 
     // if it didn't match any execute region throw an `Instruction Access Fault` (PMA)
     // or if PMP reject the access
@@ -113,6 +117,9 @@ module pmp_data_if
       // Configuration
       .conf_addr_i  (pmpaddr_i),
       .conf_i       (pmpcfg_i),
+      // JITDomain - use the expected domain in the translation req
+      .dmpconf_i    (dmpcfg_i),
+      .expdom_i     (icache_areq_i.fetch_expdom),
       .allow_o      (pmp_if_allow)
   );
 
@@ -167,6 +174,9 @@ module pmp_data_if
       // Configuration
       .conf_addr_i  (pmpaddr_i),
       .conf_i       (pmpcfg_i),
+      // JITDomain
+      .dmpconf_i    (dmpcfg_i),
+      .expdom_i     (lsu_data_dom_i),
       .allow_o      (data_allow_o)
   );
 
