@@ -187,6 +187,12 @@ module csr_regfile
     output riscv::pmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] pmpcfg_o,
     // PMP addresses - ACC_DISPATCHER
     output logic [avoid_neg(CVA6Cfg.NrPMPEntries-1):0][CVA6Cfg.PLEN-3:0] pmpaddr_o,
+    // JITDomain - DMP configs, tied to pmp regions - EX_STAGE
+    output riscv::dmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] dmpcfg_o,
+    // JITDomain - Write domain change (after a chdom or retdom) - COMMIT_STAGE
+    input logic csr_write_dom_i,
+    // JITDomain - Current domain - FRONTEND, ID_STAGE, EX_STAGE
+    output riscv::dmp_domain_t curdom_o,
     // TO_BE_COMPLETED - PERF_COUNTERS
     output logic [31:0] mcountinhibit_o,
     // RVFI
@@ -338,6 +344,10 @@ module csr_regfile
 
   riscv::pmpcfg_t [63:0] pmpcfg_q, pmpcfg_d, pmpcfg_next;
   logic [63:0][CVA6Cfg.PLEN-3:0] pmpaddr_q, pmpaddr_d, pmpaddr_next;
+  // JITDomain - dmpcfg signals (only the first 16 entries are CSR accessible)
+  riscv::dmpcfg_t [63:0] dmpcfg_q, dmpcfg_d;
+  // JITDomain - current domain
+  riscv::dmp_domain_t curdom_q, curdom_d;
   logic [MHPMCounterNum+3-1:0] mcountinhibit_d, mcountinhibit_q;
 
   // CBO enable flags from menvcfg/senvcfg/henvcfg
@@ -380,6 +390,8 @@ module csr_regfile
 
   assign pmpcfg_o  = pmpcfg_q[(CVA6Cfg.NrPMPEntries>0?CVA6Cfg.NrPMPEntries-1 : 0):0];
   assign pmpaddr_o = pmpaddr_q[(CVA6Cfg.NrPMPEntries>0?CVA6Cfg.NrPMPEntries-1 : 0):0];
+  // JITDomain - registers
+  assign dmpcfg_o  = dmpcfg_q[(CVA6Cfg.NrPMPEntries>0?CVA6Cfg.NrPMPEntries-1 : 0):0];
 
   riscv::fcsr_t fcsr_q, fcsr_d;
   jvt_t jvt_q, jvt_d;
@@ -925,6 +937,11 @@ module csr_regfile
             csr_rdata = pmpcfg_q[index*4+:CVA6Cfg.XLEN/8];
           end
         end
+        // JITDomain - dmp config read data
+        riscv::CSR_DMPCFG0: csr_rdata = dmpcfg_q[CVA6Cfg.XLEN/4-1:0];
+        riscv::CSR_DMPCFG1:
+        if (CVA6Cfg.IS_XLEN32) csr_rdata = dmpcfg_q[15:7];
+        else read_access_exception = 1'b1;
         // PMPADDR
         riscv::CSR_PMPADDR0,
                 riscv::CSR_PMPADDR1,
@@ -1154,6 +1171,10 @@ module csr_regfile
 
     pmpcfg_d               = pmpcfg_q;
     pmpaddr_d              = pmpaddr_q;
+
+    // JITDomain - Propagate values
+    dmpcfg_d               = dmpcfg_q;
+    curdom_d               = curdom_q;
 
     mcbie_d                = mcbie_q;
     scbie_d                = scbie_q;
@@ -1955,6 +1976,20 @@ module csr_regfile
             end
           end
         end
+        // JITDomain - DMP write update
+        // TODO: Check correct update and sizing
+        riscv::CSR_DMPCFG0: begin
+          for (int i = 0; i < (CVA6Cfg.XLEN / 4); i++)
+          if (!dmpcfg_q[i].locked) dmpcfg_d[i] = csr_wdata[i*4+:4];
+        end
+        riscv::CSR_DMPCFG1: begin
+          if (CVA6Cfg.IS_XLEN32) begin
+            for (int i = 0; i < 8; i++)
+            if (!dmpcfg_q[i+8].locked) dmpcfg_d[i+8] = csr_wdata[i*4+:4];
+          end else begin
+            update_access_exception = 1'b1;
+          end
+        end
         riscv::CSR_PMPADDR0,
                 riscv::CSR_PMPADDR1,
                 riscv::CSR_PMPADDR2,
@@ -2071,7 +2106,16 @@ module csr_regfile
     end
 
     // reserve PMPCFG bits 5 and 6 (hardwire to 0)
-    for (int i = 0; i < CVA6Cfg.NrPMPEntries; i++) pmpcfg_d[i].reserved = 2'b0;
+    for (int i = 0; i < CVA6Cfg.NrPMPEntries; i++) begin
+      pmpcfg_d[i].reserved = 2'b0;
+      dmpcfg_d[i].reserved = 1'b0;
+    end
+
+    // JITDomain - update current domain
+    if (csr_write_dom_i) begin
+      curdom_d = riscv::dmp_domain_t'(csr_wdata[1:0]);
+      // flush_o = 1'b1; // JITDomain, flush here?
+    end
 
     // write the floating point status register
     if (CVA6Cfg.FpPresent && csr_write_fflags_i) begin
@@ -2782,6 +2826,8 @@ module csr_regfile
   assign vs_asid_o = CVA6Cfg.RVH ? vsatp_q.asid[CVA6Cfg.ASID_WIDTH-1:0] : '0;
   assign vmid_o = CVA6Cfg.RVH ? hgatp_q.vmid[CVA6Cfg.VMID_WIDTH-1:0] : '0;
   assign sum_o = mstatus_q.sum;
+  // JITDomain outputs
+  assign curdom_o = curdom_q;
   assign vs_sum_o = CVA6Cfg.RVH ? vsstatus_q.sum : '0;
   assign hu_o = CVA6Cfg.RVH ? hstatus_q.hu : '0;
 
@@ -2943,6 +2989,10 @@ module csr_regfile
           pmpaddr_q[i] <= '0;
         end
       end
+      // JITDomain - dmp
+      dmpcfg_q <= '0;
+      // JITDomain - current domain
+      curdom_q <= riscv::DOM0;
     end else begin
       priv_lvl_q <= priv_lvl_d;
       // floating-point registers
@@ -3034,6 +3084,12 @@ module csr_regfile
       // pmp
       pmpcfg_q               <= pmpcfg_next;
       pmpaddr_q              <= pmpaddr_next;
+      // JITDomain - dmp (pass 0 if not used) and current domain
+      for (int i = 0; i < 64; i++) begin
+        if (i < CVA6Cfg.NrPMPEntries) dmpcfg_q[i] <= dmpcfg_d[i];
+        else dmpcfg_q[i] <= '0;
+      end
+      curdom_q <= curdom_d;
     end
   end
 
