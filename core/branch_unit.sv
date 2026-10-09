@@ -35,6 +35,8 @@ module branch_unit #(
     input logic is_zcmt_i,
     // Instruction is compressed - ISSUE_STAGE
     input logic is_compressed_instr_i,
+    // JITDomain - Current domain, needed for classic control flow changes - CSR_REGFILE
+    input riscv::dmp_domain_t curdom_i,
     // Branch unit instruction is valid - ISSUE_STAGE
     input logic branch_valid_i,
     // ALU branch compare result - ALU
@@ -58,7 +60,7 @@ module branch_unit #(
     // set the jump base, for JALR we need to look at the register, for all other control flow instructions we can take the current PC
     automatic logic [CVA6Cfg.VLEN-1:0] jump_base;
     // TODO(zarubaf): The ALU can be used to calculate the branch target
-    jump_base = (fu_data_i.operation == ariane_pkg::JALR) ? fu_data_i.operand_a[CVA6Cfg.VLEN-1:0] : pc_i;
+    jump_base = (ariane_pkg::op_is_regjump(fu_data_i.operation)) ? fu_data_i.operand_a[CVA6Cfg.VLEN-1:0] : pc_i;
 
     resolve_branch_o = 1'b0;
     resolved_branch_o.target_address = {CVA6Cfg.VLEN{1'b0}};
@@ -66,13 +68,14 @@ module branch_unit #(
     resolved_branch_o.valid = branch_valid_i;
     resolved_branch_o.is_mispredict = 1'b0;
     resolved_branch_o.cf_type = branch_predict_i.cf;
+    resolved_branch_o.expdom = curdom_i;  // JITDomain - current domain for default control flow changes
     // calculate next PC, depending on whether the instruction is compressed or not this may be different
     // TODO(zarubaf): We already calculate this a couple of times, maybe re-use?
     next_pc                          = pc_i + ((is_compressed_instr_i) ? {{CVA6Cfg.VLEN-2{1'b0}}, 2'h2} : {{CVA6Cfg.VLEN-3{1'b0}}, 3'h4});
     // calculate target address simple 64 bit addition
     target_address = $unsigned($signed(jump_base) + $signed(fu_data_i.imm[CVA6Cfg.VLEN-1:0]));
     // on a JALR we are supposed to reset the LSB to 0 (according to the specification)
-    if (fu_data_i.operation == ariane_pkg::JALR) target_address[0] = 1'b0;
+    if (ariane_pkg::op_is_regjump(fu_data_i.operation)) target_address[0] = 1'b0;
     // we need to put the branch target address into rd, this is the result of this unit
     branch_result_o = next_pc;
     resolved_branch_o.pc = pc_i;
@@ -98,13 +101,17 @@ module branch_unit #(
         // If the ALU comparison does not agree with the BHT prediction set the resolution as mispredicted.
         resolved_branch_o.is_mispredict  = branch_comp_res_i != (branch_predict_i.cf == ariane_pkg::Branch);
       end
-      if (fu_data_i.operation == ariane_pkg::JALR
+      if (ariane_pkg::op_is_regjump(fu_data_i.operation)
           // check if the address of the jump register is correct and that we actually predicted
           && (!branch_predict_i.valid || target_address != branch_predict_i.predict_address)) begin
         resolved_branch_o.is_mispredict = 1'b1;
         // update BTB only if this wasn't a return
         if (branch_predict_i.cf != ariane_pkg::Return)
           resolved_branch_o.cf_type = ariane_pkg::JumpR;
+        // JITDomain - Expected domain setup
+        if (ariane_pkg::op_is_domchg(fu_data_i.operation)) begin
+          resolved_branch_o.expdom = fu_data_i.target_dom;
+        end
       end
       // to resolve the branch in ID
       resolve_branch_o = 1'b1;

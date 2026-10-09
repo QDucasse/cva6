@@ -745,7 +745,8 @@ module cva6
       .icache_dreq_i      (icache_dreq_cache_if),
       .fetch_entry_o      (fetch_entry_if_id),
       .fetch_entry_valid_o(fetch_valid_if_id),
-      .fetch_entry_ready_i(fetch_ready_id_if)
+      .fetch_entry_ready_i(fetch_ready_id_if),
+      .curdom_i           (curdom)
   );
 
   // ---------
@@ -1048,6 +1049,7 @@ module cva6
       .csr_valid_i(csr_valid_id_ex),
       .csr_addr_o(csr_addr_ex_csr),
       .csr_commit_i(csr_commit_commit_ex),  // from commit
+      .curdom_i(curdom),  // JITDomain - current domain
       .csr_hs_ld_st_inst_o(csr_hs_ld_st_inst_ex),  // signals a Hypervisor Load/Store Instruction
       // MULT
       .mult_valid_i(mult_valid_id_ex),

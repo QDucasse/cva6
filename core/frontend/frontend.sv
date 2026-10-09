@@ -54,6 +54,8 @@ module frontend
     input logic [CVA6Cfg.VLEN-1:0] trap_vector_base_i,
     // Debug event - CSR
     input logic set_debug_pc_i,
+    // JITDomain - Current domain - CSR_REGFILE
+    input riscv::dmp_domain_t curdom_i,
     // Debug mode state - CSR
     input logic debug_mode_i,
     // Handshake between CACHE and FRONTEND (fetch) - CACHES
@@ -106,6 +108,7 @@ module frontend
   // instruction fetch is ready
   logic                                                          if_ready;
   logic [CVA6Cfg.VLEN-1:0] npc_d, npc_q;  // next PC
+  riscv::dmp_domain_t expdom_d, expdom_q;  // JITDomain - Expected domain
 
   // indicates whether we come out of reset (then we need to load boot_addr_i)
   logic                                       npc_rst_load_q;
@@ -352,6 +355,7 @@ module frontend
   // select PC a.k.a PC Gen
   always_comb begin : npc_select
     automatic logic [CVA6Cfg.VLEN-1:0] fetch_address;
+    automatic riscv::dmp_domain_t fetch_expdom;  // JITDomain
     // check whether we come out of reset
     // this is a workaround. some tools have issues
     // having boot_addr_i in the asynchronous
@@ -361,37 +365,51 @@ module frontend
     if (npc_rst_load_q) begin
       npc_d         = boot_addr_i;
       fetch_address = boot_addr_i;
+      expdom_d      = riscv::DOMI;
+      fetch_expdom  = riscv::DOMI;  // JITDomain
     end else begin
       fetch_address = npc_q;
       // keep stable by default
       npc_d         = npc_q;
+      // JITDomain - expected domain
+      fetch_expdom  = expdom_q;
+      expdom_d      = expdom_q;
     end
     // 0. Branch Prediction
     if (bp_valid) begin
       fetch_address = predict_address;
       npc_d = predict_address;
+      // JITDomain - Expected domain in the case of a branch prediction (classic control flow)
+      fetch_expdom = curdom_i;
+      expdom_d = curdom_i;
     end
     // 1. Default assignment
     if (if_ready) begin
       npc_d = {
         fetch_address[CVA6Cfg.VLEN-1:CVA6Cfg.FETCH_ALIGN_BITS] + 1, {CVA6Cfg.FETCH_ALIGN_BITS{1'b0}}
       };
+      expdom_d = riscv::DOMI;
+      // expdom_d = curdom_i;
     end
     // 2. Replay instruction fetch
     if (replay) begin
       npc_d = replay_addr;
+      expdom_d = curdom_i;
     end
     // 3. Control flow change request
     if (is_mispredict) begin
       npc_d = resolved_branch_i.target_address;
+      expdom_d = resolved_branch_i.expdom;  // JITDomain - get expected domain from branch unit
     end
     // 4. Return from environment call
     if (eret_i) begin
       npc_d = epc_i;
+      expdom_d = curdom_i;
     end
     // 5. Exception/Interrupt
     if (ex_valid_i) begin
       npc_d = trap_vector_base_i;
+      expdom_d = riscv::DOM0;
     end
     // 6. Pipeline Flush because of CSR side effects
     // On a pipeline flush start fetching from the next address
@@ -404,12 +422,16 @@ module frontend
     // TODO(zarubaf) This adder can at least be merged with the one in the csr_regfile stage
     if (set_pc_commit_i) begin
       npc_d = pc_commit_i + (halt_i ? '0 : {{CVA6Cfg.VLEN - 3{1'b0}}, 3'b100});
+      expdom_d = riscv::DOMI;
     end
     // 7. Debug
     // enter debug on a hard-coded base-address
-    if (CVA6Cfg.DebugEn && set_debug_pc_i)
+    if (CVA6Cfg.DebugEn && set_debug_pc_i) begin
       npc_d = CVA6Cfg.DmBaseAddress[CVA6Cfg.VLEN-1:0] + CVA6Cfg.HaltAddress[CVA6Cfg.VLEN-1:0];
+      expdom_d = curdom_i;
+    end
     icache_dreq_o.vaddr = fetch_address;
+    icache_dreq_o.expdom = fetch_expdom;
   end
 
   logic [CVA6Cfg.FETCH_WIDTH-1:0] icache_data;
@@ -429,10 +451,12 @@ module frontend
       icache_gva_q      <= 1'b0;
       icache_ex_valid_q <= ariane_pkg::FE_NONE;
       btb_q             <= '0;
+      expdom_q          <= riscv::DOM0;
       bht_q             <= '0;
     end else begin
       npc_rst_load_q <= 1'b0;
       npc_q          <= npc_d;
+      expdom_q       <= expdom_d;
       speculative_q  <= speculative_d;
       icache_valid_q <= icache_dreq_i.valid;
       if (icache_dreq_i.valid) begin
