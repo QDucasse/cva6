@@ -166,6 +166,8 @@ module load_store_unit
     input riscv::pmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0]                   pmpcfg_i,
     // PMP address - CSR_REGFILE
     input logic           [avoid_neg(CVA6Cfg.NrPMPEntries-1):0][CVA6Cfg.PLEN-3:0] pmpaddr_i,
+    // JITDomain - DMP configuration - CSR_REGFILE
+    input riscv::dmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] dmpcfg_i,
 
     // RVFI information - RVFI
     output lsu_ctrl_t                    rvfi_lsu_ctrl_o,
@@ -226,6 +228,8 @@ module load_store_unit
   logic translation_req, cva6_translation_req, acc_translation_req;
   logic translation_valid, cva6_translation_valid;
   logic [CVA6Cfg.VLEN-1:0] mmu_vaddr, cva6_mmu_vaddr, acc_mmu_vaddr;
+  // JITDomain - Info on the expected data domain (from load/store), registered like the MMU vaddr
+  riscv::dmp_domain_t ld_data_dom, st_data_dom, mmu_data_dom, cva6_mmu_data_dom, pmp_data_dom_q;
   logic [CVA6Cfg.PLEN-1:0] mmu_paddr, cva6_mmu_paddr, acc_mmu_paddr, lsu_paddr;
   logic [CVA6Cfg.VLEN-1:0] pmp_vaddr_q;
   logic                    pmp_is_store_q;
@@ -339,7 +343,8 @@ module load_store_unit
         .req_port_o(dcache_req_ports_o[0]),
 
         .pmpcfg_i,
-        .pmpaddr_i
+        .pmpaddr_i,
+        .dmpcfg_i
     );
   end else begin : gen_no_mmu
     // icache request without MMU, virtual and physical address are identical
@@ -351,6 +356,7 @@ module load_store_unit
       assign pmp_icache_areq_i.fetch_paddr = CVA6Cfg.PLEN'(icache_areq_i.fetch_vaddr);
     end
     assign pmp_icache_areq_i.fetch_exception = 'h0;
+    assign pmp_icache_areq_i.fetch_expdom = icache_areq_i.fetch_expdom;  // JITDomain
     // dcache request without mmu for load or store,
     // Delay of 1 cycle to match MMU latency giving the address tag
     always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -414,6 +420,7 @@ module load_store_unit
       .lsu_exception_i     (pmp_exception),
       .lsu_is_store_i      (pmp_is_store_q),
       .lsu_hlvx_inst_i     (pmp_hlvx_inst_q),
+      .lsu_data_dom_i      (pmp_data_dom_q),
       .lsu_valid_o         (translation_valid),
       .lsu_paddr_o         (mmu_paddr),
       .lsu_exception_o     (mmu_exception),
@@ -422,8 +429,18 @@ module load_store_unit
       .ld_st_priv_lvl_i    (ld_st_priv_lvl_i),
       .ld_st_v_i           (ld_st_v_i),
       .pmpcfg_i            (pmpcfg_i),
-      .pmpaddr_i           (pmpaddr_i)
+      .pmpaddr_i           (pmpaddr_i),
+      .dmpcfg_i            (dmpcfg_i)
   );
+
+  // JITDomain - Keep the expected domain aligned with the translated address
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (~rst_ni) begin
+      pmp_data_dom_q <= riscv::DOMI;
+    end else begin
+      pmp_data_dom_q <= mmu_data_dom;
+    end
+  end
 
   // ------------------
   // External MMU port
@@ -454,6 +471,7 @@ module load_store_unit
       st_translation_req               = cva6_st_translation_req;
       translation_req                  = cva6_translation_req;
       mmu_vaddr                        = cva6_mmu_vaddr;
+      mmu_data_dom                     = cva6_mmu_data_dom;
       // MMU output
       cva6_translation_valid           = translation_valid;
       cva6_mmu_paddr                   = mmu_paddr;
@@ -486,6 +504,7 @@ module load_store_unit
           st_translation_req               = acc_mmu_req_i.acc_mmu_is_store;
           translation_req                  = acc_mmu_req_i.acc_mmu_req;
           mmu_vaddr                        = acc_mmu_req_i.acc_mmu_vaddr;
+          mmu_data_dom                     = riscv::DOMI;  // JITDomain - accelerator accesses are not domain-checked
           // MMU output
           acc_mmu_resp_o.acc_mmu_valid     = translation_valid;
           acc_mmu_resp_o.acc_mmu_paddr     = mmu_paddr;
@@ -516,6 +535,7 @@ module load_store_unit
     assign st_translation_req     = cva6_st_translation_req;
     assign translation_req        = cva6_translation_req;
     assign mmu_vaddr              = cva6_mmu_vaddr;
+    assign mmu_data_dom           = cva6_mmu_data_dom;
     // MMU output
     assign cva6_translation_valid = translation_valid;
     assign cva6_mmu_paddr         = mmu_paddr;
@@ -562,6 +582,7 @@ module load_store_unit
       // MMU port
       .translation_req_o    (cva6_st_translation_req),
       .vaddr_o              (st_vaddr),
+      .data_dom_o           (st_data_dom),
       .rvfi_mem_paddr_o     (rvfi_mem_paddr_o),
       .tinst_o              (st_tinst),
       .hs_ld_st_inst_o      (st_hs_ld_st_inst),
@@ -608,6 +629,7 @@ module load_store_unit
       // MMU port
       .translation_req_o    (ld_translation_req),
       .vaddr_o              (ld_vaddr),
+      .data_dom_o           (ld_data_dom),
       .tinst_o              (ld_tinst),
       .hs_ld_st_inst_o      (ld_hs_ld_st_inst),
       .hlvx_inst_o          (ld_hlvx_inst),
@@ -665,6 +687,7 @@ module load_store_unit
 
     cva6_translation_req = 1'b0;
     cva6_mmu_vaddr       = {CVA6Cfg.VLEN{1'b0}};
+    cva6_mmu_data_dom    = riscv::DOMI;
     mmu_tinst            = {32{1'b0}};
     mmu_hs_ld_st_inst    = 1'b0;
     mmu_hlvx_inst        = 1'b0;
@@ -676,6 +699,7 @@ module load_store_unit
         ld_valid_i           = lsu_ctrl.valid;
         cva6_translation_req = ld_translation_req;
         cva6_mmu_vaddr       = ld_vaddr;
+        cva6_mmu_data_dom    = ld_data_dom;
         if (CVA6Cfg.RVH) begin
           mmu_tinst         = ld_tinst;
           mmu_hs_ld_st_inst = ld_hs_ld_st_inst;
@@ -687,6 +711,7 @@ module load_store_unit
         st_valid_i           = lsu_ctrl.valid;
         cva6_translation_req = st_translation_req;
         cva6_mmu_vaddr       = st_vaddr;
+        cva6_mmu_data_dom    = st_data_dom;
         if (CVA6Cfg.RVH) begin
           mmu_tinst         = st_tinst;
           mmu_hs_ld_st_inst = st_hs_ld_st_inst;

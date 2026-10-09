@@ -61,6 +61,8 @@ module store_unit
     output logic translation_req_o,
     // Virtual address - TO_BE_COMPLETED
     output logic [CVA6Cfg.VLEN-1:0] vaddr_o,
+    // JITDomain - Data domain info - MMU
+    output riscv::dmp_domain_t data_dom_o,
     // RVFI information - RVFI
     output logic [CVA6Cfg.PLEN-1:0] rvfi_mem_paddr_o,
     // Transformed trap instruction out - TO_BE_COMPLETED
@@ -147,6 +149,7 @@ module store_unit
 
   // output assignments
   assign vaddr_o = lsu_ctrl_i.vaddr;  // virtual address
+  assign data_dom_o = lsu_ctrl_i.data_dom;  // JITDomain - feed-through data domain
   assign hs_ld_st_inst_o = CVA6Cfg.RVH ? lsu_ctrl_i.hs_ld_st_inst : 1'b0;
   assign hlvx_inst_o = CVA6Cfg.RVH ? lsu_ctrl_i.hlvx_inst : 1'b0;
   assign tinst_o = CVA6Cfg.RVH ? lsu_ctrl_i.tinst : '0;  // transformed instruction

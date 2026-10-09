@@ -110,7 +110,9 @@ module cva6_mmu
     // PMP
 
     input riscv::pmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0]                   pmpcfg_i,
-    input logic           [avoid_neg(CVA6Cfg.NrPMPEntries-1):0][CVA6Cfg.PLEN-3:0] pmpaddr_i
+    input logic           [avoid_neg(CVA6Cfg.NrPMPEntries-1):0][CVA6Cfg.PLEN-3:0] pmpaddr_i,
+    // JITDomain - DMP configuration - CSR_REGFILE
+    input riscv::dmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] dmpcfg_i
 );
 
   // memory management, pte for cva6
@@ -364,6 +366,7 @@ module cva6_mmu
       // PMP
       .pmpcfg_i   (pmpcfg_i),
       .pmpaddr_i  (pmpaddr_i),
+      .dmpcfg_i   (dmpcfg_i),
       .bad_paddr_o(ptw_bad_paddr),
       .bad_gpaddr_o(ptw_bad_gpaddr)
   );
@@ -385,6 +388,7 @@ module cva6_mmu
     // 1. HPTW threw an exception -> signal with a page fault exception
     // 2. We got an access error because of insufficient permissions -> throw an access exception
     icache_areq_o.fetch_exception = '0;
+    icache_areq_o.fetch_expdom = icache_areq_i.fetch_expdom;  // JITDomain - pass the expected domain
     // Check whether we are allowed to access this memory region from a fetch perspective
     iaccess_err = icache_areq_i.fetch_req && enable_translation_i &&  //
     (((priv_lvl_i == riscv::PRIV_LVL_U) && ~itlb_content.u)  //
