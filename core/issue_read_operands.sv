@@ -697,6 +697,9 @@ module issue_read_operands
       fu_data_n[i].trans_id  = issue_instr_i[i].trans_id;
       fu_data_n[i].fu        = issue_instr_i[i].fu;
       fu_data_n[i].operation = issue_instr_i[i].op;
+      // JITDomain - Extract info from decoder sb entry
+      fu_data_n[i].target_dom = issue_instr_i[i].target_dom;
+      fu_data_n[i].chg_dom = issue_instr_i[i].chg_dom;
       if (CVA6Cfg.RVH) begin
         tinst_n[i] = issue_instr_i[i].ex.tinst;
       end

@@ -82,6 +82,8 @@ module decoder
     input logic vtw_i,
     // Trap sret - CSR_REGFILE
     input logic tsr_i,
+    // JITDomain - Current domain - CSR_REGFILE
+    input riscv::dmp_domain_t curdom_i,
     // Hypervisor user mode - CSR_REGFILE
     input logic hu_i,
     // machine-mode cache block invalidate enable - CSR_REGFILE
@@ -109,6 +111,7 @@ module decoder
   logic illegal_instr_bm;
   logic illegal_instr_zic;
   logic illegal_instr_non_bm;
+  logic illegal_domain;  // JITDomain - Check if code domain complies with current domain
   logic virtual_illegal_instr;
   // this instruction is an environment call (ecall), it is handled like an exception
   logic ecall;
@@ -118,6 +121,9 @@ module decoder
   logic check_fprm;
   riscv::instruction_t instr;
   assign instr = riscv::instruction_t'(instruction_i);
+  // JITDomain - internal signal curdom
+  riscv::dmp_domain_t curdom;
+  assign curdom = riscv::dmp_domain_t'(curdom_i);
   // transformed instruction
   logic [31:0] tinst;
   // --------------------
@@ -201,6 +207,10 @@ module decoder
     ebreak                                 = 1'b0;
     check_fprm                             = 1'b0;
     tinst                                  = 32'h0;
+    // JITDomain - Default values
+    illegal_domain                         = 1'b0;  // illegal domain - ok by default
+    instruction_o.target_dom               = riscv::DOMI;  // data domain - inclusive by default
+    instruction_o.chg_dom                  = 1'b0;  // flag chgdom - does not change by default
 
     if (~ex_i.valid) begin
       case (instr.rtype.opcode)
@@ -223,9 +233,15 @@ module decoder
               // decode the immediate field
               case (instr.itype.imm)
                 // ECALL -> inject exception
-                12'b0: ecall = 1'b1;
+                12'b0: begin
+                  ecall = 1'b1;
+                  illegal_domain = (curdom != riscv::DOMI) & (curdom != riscv::DOM0); // Check current domain is dom0
+                end
                 // EBREAK -> inject exception
-                12'b1: ebreak = 1'b1;
+                12'b1: begin
+                  ebreak = 1'b1;
+                  illegal_domain = (curdom != riscv::DOMI) & (curdom != riscv::DOM0); // Check current domain is dom0
+                end
                 // SRET
                 12'b1_0000_0010: begin
                   if (CVA6Cfg.RVS) begin
@@ -1304,6 +1320,8 @@ module decoder
           imm_select = SIMM;
           instruction_o.rs1 = instr.stype.rs1;
           instruction_o.rs2 = instr.stype.rs2;
+          instruction_o.target_dom = riscv::DOM0;  // JITDomain - Can only access data from domain 0
+          illegal_domain = (curdom == riscv::DOM2);  // Check current domain is dom0 or dom1
           // determine store size
           unique case (instr.stype.funct3)
             3'b000: instruction_o.op = ariane_pkg::SB;
@@ -1325,6 +1343,8 @@ module decoder
           imm_select = IIMM;
           instruction_o.rs1 = instr.itype.rs1;
           instruction_o.rd = instr.itype.rd;
+          instruction_o.target_dom = riscv::DOM0;  // JITDomain - Can only access data from domain 0
+          illegal_domain = (curdom == riscv::DOM2);  // Check current domain is dom0 or dom1
           // determine load size and signed type
           unique case (instr.itype.funct3)
             3'b000: instruction_o.op = ariane_pkg::LB;
@@ -1346,6 +1366,88 @@ module decoder
           end
         end
 
+        // -------------------------------------
+        // JITDomain - Duplicated instructions
+        // -------------------------------------
+
+        // JITDomain - Duplicated store instructions
+        riscv::OpcodeStore1: begin
+          instruction_o.fu = STORE;
+          imm_select = SIMM;
+          instruction_o.rs1 = instr.stype.rs1;
+          instruction_o.rs2 = instr.stype.rs2;
+          instruction_o.target_dom = riscv::DOM1;  // JITDomain - Accesses data in domain 1
+          illegal_domain = (curdom != riscv::DOMI) & (curdom != riscv::DOM1); // Check current domain is dom1
+          // determine store size
+          unique case (instr.stype.funct3)
+            3'b000: instruction_o.op = ariane_pkg::SB1;
+            3'b001: instruction_o.op = ariane_pkg::SH1;
+            3'b010: instruction_o.op = ariane_pkg::SW1;
+            3'b011:
+            if (CVA6Cfg.IS_XLEN64) instruction_o.op = ariane_pkg::SD1;
+            else illegal_instr = 1'b1;
+            3'b111: begin
+              if (CVA6Cfg.IS_XLEN64) instruction_o.op = ariane_pkg::SST;
+              else illegal_instr = 1'b1;
+              instruction_o.target_dom = riscv::DOM2;  // Accesses data in domain 2
+            end
+            default: illegal_instr = 1'b1;
+          endcase
+        end
+
+        // JITDomain - Duplicated load instructions
+        riscv::OpcodeLoad1: begin
+          instruction_o.fu = LOAD;
+          imm_select = IIMM;
+          instruction_o.rs1 = instr.itype.rs1;
+          instruction_o.rd = instr.itype.rd;
+          instruction_o.target_dom = riscv::DOM1;  // JITDomain - Accesses data in domain 1
+          illegal_domain = (curdom != riscv::DOMI) & (curdom != riscv::DOM1); // Check current domain is dom1
+          // determine load size and signed type
+          unique case (instr.itype.funct3)
+            3'b000: instruction_o.op = ariane_pkg::LB1;
+            3'b001: instruction_o.op = ariane_pkg::LH1;
+            3'b010: instruction_o.op = ariane_pkg::LW1;
+            3'b100: instruction_o.op = ariane_pkg::LBU1;
+            3'b101: instruction_o.op = ariane_pkg::LHU1;
+            3'b110:
+            if (CVA6Cfg.IS_XLEN64) instruction_o.op = ariane_pkg::LWU1;
+            else illegal_instr = 1'b1;
+            3'b011:
+            if (CVA6Cfg.IS_XLEN64) instruction_o.op = ariane_pkg::LD1;
+            else illegal_instr = 1'b1;
+            3'b111: begin
+              if (CVA6Cfg.IS_XLEN64) instruction_o.op = ariane_pkg::LST;
+              else illegal_instr = 1'b1;
+              instruction_o.target_dom = riscv::DOM2;  // Accesses data in domain 2
+            end
+            default: illegal_instr = 1'b1;
+          endcase
+        end
+
+        // JITDomain - Duplicated JALR (ChgDom)
+        riscv::OpcodeChgDom: begin
+          instruction_o.fu        = CTRL_FLOW;
+          instruction_o.rs1       = instr.itype.rs1;
+          imm_select              = IIMM;
+          instruction_o.rd        = instr.itype.rd;
+          is_control_flow_instr_o = 1'b1;
+          instruction_o.chg_dom   = 1'b1;  // JITDomain - Should change domain
+          unique case (instr.itype.funct3)
+            3'b000: begin
+              instruction_o.op = ariane_pkg::RETDOM;
+              instruction_o.target_dom = riscv::DOM0; // JITDomain - Arrives in domain 0 (through fetch)
+              illegal_domain = (curdom != riscv::DOMI) & (curdom != riscv::DOM1); // Check current domain is dom1
+            end
+            3'b001: begin
+              instruction_o.op = ariane_pkg::CHDOM;
+              instruction_o.target_dom = riscv::DOM1; // JITDomain - Arrives in domain 1 (through fetch)
+              illegal_domain = (curdom != riscv::DOMI) & (curdom != riscv::DOM0); // Check current domain is dom0
+            end
+            default: illegal_instr = 1'b1;
+          endcase
+        end
+
         // --------------------------------
         // Floating-Point Load/store
         // --------------------------------
@@ -1355,6 +1457,8 @@ module decoder
             imm_select = SIMM;
             instruction_o.rs1 = instr.stype.rs1;
             instruction_o.rs2 = instr.stype.rs2;
+            instruction_o.target_dom = riscv::DOM0;  // JITDomain - Can only access data from domain 0
+            illegal_domain = (curdom == riscv::DOM2);  // Check current domain is dom0 or dom1
             // determine store size
             unique case (instr.stype.funct3)
               // Only process instruction if corresponding extension is active (static)
@@ -1385,6 +1489,8 @@ module decoder
             imm_select = IIMM;
             instruction_o.rs1 = instr.itype.rs1;
             instruction_o.rd = instr.itype.rd;
+            instruction_o.target_dom = riscv::DOM0;  // JITDomain - Can only access data from domain 0
+            illegal_domain = (curdom == riscv::DOM2);  // Check current domain is dom0 or dom1
             // determine load size
             unique case (instr.itype.funct3)
               // Only process instruction if corresponding extension is active (static)
@@ -1688,6 +1794,7 @@ module decoder
           instruction_o.fu        = CTRL_FLOW;
           instruction_o.rs1       = instr.stype.rs1;
           instruction_o.rs2       = instr.stype.rs2;
+          instruction_o.target_dom = curdom;  // JITDomain, ensure base control flow do not change domain
 
           is_control_flow_instr_o = 1'b1;
 
@@ -1711,6 +1818,7 @@ module decoder
           instruction_o.rs1       = instr.itype.rs1;
           imm_select              = IIMM;
           instruction_o.rd        = instr.itype.rd;
+          instruction_o.target_dom = curdom;  // JITDomain, ensure base control flow do not change domain
           is_control_flow_instr_o = 1'b1;
           // invalid jump and link register -> reserved for vector encoding
           if (instr.itype.funct3 != 3'b0) illegal_instr = 1'b1;
@@ -1720,6 +1828,7 @@ module decoder
           instruction_o.fu        = CTRL_FLOW;
           imm_select              = JIMM;
           instruction_o.rd        = instr.utype.rd;
+          instruction_o.target_dom = curdom;  // JITDomain, ensure base control flow do not change domain
           is_control_flow_instr_o = 1'b1;
         end
 
@@ -1903,7 +2012,8 @@ module decoder
         if (priv_lvl_i == riscv::PRIV_LVL_S && CVA6Cfg.RVS) begin
           instruction_o.ex.cause = (CVA6Cfg.RVH && v_i) ? riscv::ENV_CALL_VSMODE : riscv::ENV_CALL_SMODE;
         end else if (priv_lvl_i == riscv::PRIV_LVL_U && CVA6Cfg.RVU) begin
-          instruction_o.ex.cause = riscv::ENV_CALL_UMODE;
+          // JITDomain - when in user mode, an ecall outside of dom0 is illegal
+          instruction_o.ex.cause = (illegal_domain) ? riscv::ILLEGAL_INSTR : riscv::ENV_CALL_UMODE;
         end else if (priv_lvl_i == riscv::PRIV_LVL_M) begin
           instruction_o.ex.cause = riscv::ENV_CALL_MMODE;
         end
@@ -1917,6 +2027,11 @@ module decoder
         if (CVA6Cfg.RVH) instruction_o.ex.gva = v_i;
         else instruction_o.ex.gva = 1'b0;
         if (CVA6Cfg.TvalEn) instruction_o.ex.tval = pc_i;
+      end else if (illegal_domain) begin
+        // this exception is valid
+        instruction_o.ex.valid = 1'b1;
+        // TODO: JITDomain - add proper exception cause
+        instruction_o.ex.cause = riscv::ILLEGAL_INSTR;
       end
     end
     // -----------------

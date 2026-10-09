@@ -797,6 +797,7 @@ module cva6
       .tw_i                   (tw_csr_id),
       .vtw_i                  (vtw_csr_id),
       .tsr_i                  (tsr_csr_id),
+      .curdom_i               (curdom),
       .hu_i                   (hu),
       .mcbie_i                (mcbie),
       .scbie_i                (scbie),
