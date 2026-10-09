@@ -81,6 +81,8 @@ module id_stage #(
     input logic vtw_i,
     // Trap sret - CSR_REGFILE
     input logic tsr_i,
+    // JITDomain - Current domain - CSR_REGFILE
+    input riscv::dmp_domain_t curdom_i,
     // Hypervisor user mode - CSR_REGFILE
     input logic hu_i,
     // machine-mode cache block invalidate enable - CSR_REGFILE
@@ -352,6 +354,7 @@ module id_stage #(
         .tw_i,
         .vtw_i,
         .tsr_i,
+        .curdom_i,
         .hu_i,
         .mcbie_i,
         .scbie_i,
