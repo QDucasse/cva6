@@ -58,10 +58,12 @@ module cva6
       logic                    fetch_valid;      // address translation valid
       logic [CVA6Cfg.PLEN-1:0] fetch_paddr;      // physical address in
       exception_t              fetch_exception;  // exception occurred during fetch
+      riscv::dmp_domain_t      fetch_expdom;     // JITDomain - Expected domain
     },
     localparam type icache_arsp_t = struct packed {
       logic                    fetch_req;    // address translation request
       logic [CVA6Cfg.VLEN-1:0] fetch_vaddr;  // virtual address out
+      riscv::dmp_domain_t      fetch_expdom; // JITDomain - Expected domain
     },
 
     // I$ data requests
@@ -71,6 +73,7 @@ module cva6
       logic                    kill_s2;  // kill the last request
       logic                    spec;     // request is speculative
       logic [CVA6Cfg.VLEN-1:0] vaddr;    // 1st cycle: 12 bit index is taken for lookup
+      riscv::dmp_domain_t      expdom;   // JITDomain - Expected domain
     },
     localparam type icache_drsp_t = struct packed {
       logic                                ready;  // icache is ready
@@ -122,6 +125,9 @@ module cva6
       logic is_double_rd_macro_instr;  // is double move decoded 32bit instruction of macro definition
       logic vfp;  // is this a vector floating-point instruction?
       logic is_zcmt;  //is a zcmt instruction
+      // JITDomain related fields
+      riscv::dmp_domain_t target_dom;  // associated target domain (should access this domain - through data or fetch)
+      logic chg_dom;  // flag to change internal state (should change domain)
     },
     localparam type writeback_t = struct packed {
       logic valid;  // wb data is valid
@@ -141,6 +147,7 @@ module cva6
       logic                    is_mispredict;   // set if this was a mis-predict
       logic                    is_taken;        // branch is taken
       cf_t                     cf_type;         // Type of control flow change
+      riscv::dmp_domain_t      expdom;          // JITDomain - expected domain for IF
     },
 
     // All information needed to determine whether we need to associate an interrupt
@@ -169,6 +176,7 @@ module cva6
       logic [CVA6Cfg.TRANS_ID_BITS-1:0] trans_id;
       logic                             is_speculative_load;
       logic                             is_speculative_load_miss;
+      riscv::dmp_domain_t               data_dom;  // JITDomain - expected data domain
     },
 
 
@@ -181,6 +189,8 @@ module cva6
       logic [CVA6Cfg.XLEN-1:0]          operand_b;
       logic [CVA6Cfg.XLEN-1:0]          imm;
       logic [CVA6Cfg.TRANS_ID_BITS-1:0] trans_id;
+      riscv::dmp_domain_t               target_dom;  // JITDomain - Information passed to the functional units
+      logic                             chg_dom;
     },
 
     localparam type icache_req_t = struct packed {
