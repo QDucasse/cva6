@@ -537,7 +537,23 @@ package ariane_pkg;
     SHA512SIG0,
     SHA512SIG1,
     SHA512SUM0,
-    SHA512SUM1
+    SHA512SUM1,
+    // JITDomain - LSU duplicated functions
+    LD1,
+    SD1,
+    LW1,
+    LWU1,
+    SW1,
+    LH1,
+    LHU1,
+    SH1,
+    LB1,
+    SB1,
+    LBU1,
+    LST,
+    SST,
+    CHDOM,
+    RETDOM
   } fu_op;
 
   typedef struct packed {
@@ -549,6 +565,21 @@ package ariane_pkg;
     unique case (op) inside
       EQ, NE, LTS, GES, LTU, GEU: return 1'b1;
       default:                    return 1'b0;  // all other ops
+    endcase
+  endfunction
+
+  // JITDomain - Simplification for the branch unit
+  function automatic logic op_is_regjump(input fu_op op);
+    unique case (op) inside
+      JALR, CHDOM, RETDOM: return 1'b1;
+      default:             return 1'b0;  // all other ctrl flow ops
+    endcase
+  endfunction
+
+  function automatic logic op_is_domchg(input fu_op op);
+    unique case (op) inside
+      CHDOM, RETDOM: return 1'b1;
+      default:       return 1'b0;  // all other ctrl flow ops
     endcase
   endfunction
 

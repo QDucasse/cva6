@@ -896,7 +896,8 @@ module load_store_unit
     fu_data_i.operation,
     fu_data_i.trans_id,
     speculative_load_i,
-    1'b0
+    1'b0,
+    fu_data_i.target_dom  // JITDomain - expected data domain
   };
 
   lsu_bypass #(
