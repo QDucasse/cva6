@@ -319,6 +319,9 @@ module csr_regfile
   logic [CVA6Cfg.XLEN-1:0] hedeleg_q, hedeleg_d;
   logic [CVA6Cfg.XLEN-1:0] hideleg_q, hideleg_d;
   logic [CVA6Cfg.XLEN-1:0] hcounteren_q, hcounteren_d;
+  logic [63:0] htimedelta_q, htimedelta_d;
+  // time CSR value: mtime in V=0, mtime + htimedelta in V=1
+  logic [63:0] time_rdata;
   logic [CVA6Cfg.XLEN-1:0] hgeie_q, hgeie_d;
   logic [CVA6Cfg.XLEN-1:0] htinst_q, htinst_d;
   logic [CVA6Cfg.XLEN-1:0] htval_q, htval_d;
@@ -605,6 +608,10 @@ module csr_regfile
         riscv::CSR_HCOUNTEREN:
         if (CVA6Cfg.RVH) csr_rdata = hcounteren_q;
         else read_access_exception = 1'b1;
+        riscv::CSR_HTIMEDELTA:
+        if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64)
+          csr_rdata = htimedelta_q[CVA6Cfg.XLEN-1:0];
+        else read_access_exception = 1'b1;
         riscv::CSR_HTVAL:
         if (CVA6Cfg.RVH) csr_rdata = htval_q;
         else read_access_exception = 1'b1;
@@ -713,11 +720,11 @@ module csr_regfile
           if (CVA6Cfg.IS_XLEN32) csr_rdata = cycle_q[63:32];
           else read_access_exception = 1'b1;
         else read_access_exception = 1'b1;
-        // time is only implemented in hardware with the hidden-time extension (V=0 view for now);
-        // otherwise reads trap and M-mode firmware emulates them from the CLINT.
+        // time is only implemented in hardware with the hidden-time extension; otherwise reads
+        // trap and M-mode firmware emulates them from the CLINT. V=1 sees mtime + htimedelta.
         riscv::CSR_TIME:
-        if (CVA6Cfg.RVZicntr && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64 && !v_q)
-          csr_rdata = time_i[CVA6Cfg.XLEN-1:0];
+        if (CVA6Cfg.RVZicntr && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64)
+          csr_rdata = time_rdata[CVA6Cfg.XLEN-1:0];
         else read_access_exception = 1'b1;
         riscv::CSR_INSTRET:
         if (CVA6Cfg.RVZicntr) csr_rdata = instret_q[CVA6Cfg.XLEN-1:0];
@@ -1142,6 +1149,7 @@ module csr_regfile
       hideleg_d                = hideleg_q;
       hgeie_d                  = hgeie_q;
       hcounteren_d             = hcounteren_q;
+      htimedelta_d             = htimedelta_q;
       htinst_d                 = htinst_q;
       htval_d                  = htval_q;
       en_ld_st_g_translation_d = en_ld_st_g_translation_q;
@@ -1552,6 +1560,13 @@ module csr_regfile
         riscv::CSR_HCOUNTEREN: begin
           if (CVA6Cfg.RVH) begin
             hcounteren_d = {{CVA6Cfg.XLEN - 32{1'b0}}, csr_wdata[31:0]};
+          end else begin
+            update_access_exception = 1'b1;
+          end
+        end
+        riscv::CSR_HTIMEDELTA: begin
+          if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) begin
+            htimedelta_d = 64'(csr_wdata);
           end else begin
             update_access_exception = 1'b1;
           end
@@ -2541,6 +2556,8 @@ module csr_regfile
                                     & ((mstatus_q.mie & (priv_lvl_o == riscv::PRIV_LVL_M))
                                     | (CVA6Cfg.RVU & priv_lvl_o != riscv::PRIV_LVL_M));
 
+  assign time_rdata = (CVA6Cfg.RVH && v_q) ? time_i + htimedelta_q : time_i;
+
   always_comb begin : privilege_check
     if (CVA6Cfg.RVH) begin
       automatic riscv::priv_lvl_t access_priv;
@@ -2919,6 +2936,7 @@ module csr_regfile
         hgeie_q                  <= {CVA6Cfg.XLEN{1'b0}};
         hgatp_q                  <= {CVA6Cfg.XLEN{1'b0}};
         hcounteren_q             <= {CVA6Cfg.XLEN{1'b0}};
+        htimedelta_q             <= 64'b0;
         htval_q                  <= {CVA6Cfg.XLEN{1'b0}};
         htinst_q                 <= {CVA6Cfg.XLEN{1'b0}};
         // virtual supervisor mode registers
@@ -3017,6 +3035,7 @@ module csr_regfile
         hgeie_q                  <= hgeie_d;
         hgatp_q                  <= hgatp_d;
         hcounteren_q             <= hcounteren_d;
+        htimedelta_q             <= htimedelta_d;
         htval_q                  <= htval_d;
         htinst_q                 <= htinst_d;
         // virtual supervisor mode registers
