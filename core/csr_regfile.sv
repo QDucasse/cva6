@@ -320,6 +320,13 @@ module csr_regfile
   logic [CVA6Cfg.XLEN-1:0] hideleg_q, hideleg_d;
   logic [CVA6Cfg.XLEN-1:0] hcounteren_q, hcounteren_d;
   logic [63:0] htimedelta_q, htimedelta_d;
+  // hidden-time extension: htimectl holds HHAE (bit 0) only
+  logic htimectl_hhae_q, htimectl_hhae_d;
+  logic [63:0] hexit_time_q, hexit_time_d;
+  logic [63:0] hhidden_time_q, hhidden_time_d;
+  logic [63:0] hvtimecmp_q, hvtimecmp_d;
+  logic [63:0] hexit_cycle_q, hexit_cycle_d;
+  logic [63:0] hhidden_cycle_q, hhidden_cycle_d;
   // time CSR value: mtime in V=0, mtime + htimedelta in V=1
   logic [63:0] time_rdata;
   logic [CVA6Cfg.XLEN-1:0] hgeie_q, hgeie_d;
@@ -611,6 +618,25 @@ module csr_regfile
         riscv::CSR_HTIMEDELTA:
         if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64)
           csr_rdata = htimedelta_q[CVA6Cfg.XLEN-1:0];
+        else read_access_exception = 1'b1;
+        riscv::CSR_HTIMECTL:
+        if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64)
+          csr_rdata = {{CVA6Cfg.XLEN - 1{1'b0}}, htimectl_hhae_q};
+        else read_access_exception = 1'b1;
+        riscv::CSR_HEXIT_TIME:
+        if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) csr_rdata = hexit_time_q[CVA6Cfg.XLEN-1:0];
+        else read_access_exception = 1'b1;
+        riscv::CSR_HHIDDEN_TIME:
+        if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) csr_rdata = hhidden_time_q[CVA6Cfg.XLEN-1:0];
+        else read_access_exception = 1'b1;
+        riscv::CSR_HVTIMECMP:
+        if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) csr_rdata = hvtimecmp_q[CVA6Cfg.XLEN-1:0];
+        else read_access_exception = 1'b1;
+        riscv::CSR_HEXIT_CYCLE:
+        if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) csr_rdata = hexit_cycle_q[CVA6Cfg.XLEN-1:0];
+        else read_access_exception = 1'b1;
+        riscv::CSR_HHIDDEN_CYCLE:
+        if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) csr_rdata = hhidden_cycle_q[CVA6Cfg.XLEN-1:0];
         else read_access_exception = 1'b1;
         riscv::CSR_HTVAL:
         if (CVA6Cfg.RVH) csr_rdata = htval_q;
@@ -1150,6 +1176,12 @@ module csr_regfile
       hgeie_d                  = hgeie_q;
       hcounteren_d             = hcounteren_q;
       htimedelta_d             = htimedelta_q;
+      htimectl_hhae_d          = htimectl_hhae_q;
+      hexit_time_d             = hexit_time_q;
+      hhidden_time_d           = hhidden_time_q;
+      hvtimecmp_d              = hvtimecmp_q;
+      hexit_cycle_d            = hexit_cycle_q;
+      hhidden_cycle_d          = hhidden_cycle_q;
       htinst_d                 = htinst_q;
       htval_d                  = htval_q;
       en_ld_st_g_translation_d = en_ld_st_g_translation_q;
@@ -1567,6 +1599,48 @@ module csr_regfile
         riscv::CSR_HTIMEDELTA: begin
           if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) begin
             htimedelta_d = 64'(csr_wdata);
+          end else begin
+            update_access_exception = 1'b1;
+          end
+        end
+        riscv::CSR_HTIMECTL: begin
+          if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) begin
+            htimectl_hhae_d = csr_wdata[0];
+          end else begin
+            update_access_exception = 1'b1;
+          end
+        end
+        riscv::CSR_HEXIT_TIME: begin
+          if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) begin
+            hexit_time_d = 64'(csr_wdata);
+          end else begin
+            update_access_exception = 1'b1;
+          end
+        end
+        riscv::CSR_HHIDDEN_TIME: begin
+          if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) begin
+            hhidden_time_d = 64'(csr_wdata);
+          end else begin
+            update_access_exception = 1'b1;
+          end
+        end
+        riscv::CSR_HVTIMECMP: begin
+          if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) begin
+            hvtimecmp_d = 64'(csr_wdata);
+          end else begin
+            update_access_exception = 1'b1;
+          end
+        end
+        riscv::CSR_HEXIT_CYCLE: begin
+          if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) begin
+            hexit_cycle_d = 64'(csr_wdata);
+          end else begin
+            update_access_exception = 1'b1;
+          end
+        end
+        riscv::CSR_HHIDDEN_CYCLE: begin
+          if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) begin
+            hhidden_cycle_d = 64'(csr_wdata);
           end else begin
             update_access_exception = 1'b1;
           end
@@ -2937,6 +3011,12 @@ module csr_regfile
         hgatp_q                  <= {CVA6Cfg.XLEN{1'b0}};
         hcounteren_q             <= {CVA6Cfg.XLEN{1'b0}};
         htimedelta_q             <= 64'b0;
+        htimectl_hhae_q          <= 1'b0;
+        hexit_time_q             <= 64'b0;
+        hhidden_time_q           <= 64'b0;
+        hvtimecmp_q              <= 64'b0;
+        hexit_cycle_q            <= 64'b0;
+        hhidden_cycle_q          <= 64'b0;
         htval_q                  <= {CVA6Cfg.XLEN{1'b0}};
         htinst_q                 <= {CVA6Cfg.XLEN{1'b0}};
         // virtual supervisor mode registers
@@ -3036,6 +3116,12 @@ module csr_regfile
         hgatp_q                  <= hgatp_d;
         hcounteren_q             <= hcounteren_d;
         htimedelta_q             <= htimedelta_d;
+        htimectl_hhae_q          <= htimectl_hhae_d;
+        hexit_time_q             <= hexit_time_d;
+        hhidden_time_q           <= hhidden_time_d;
+        hvtimecmp_q              <= hvtimecmp_d;
+        hexit_cycle_q            <= hexit_cycle_d;
+        hhidden_cycle_q          <= hhidden_cycle_d;
         htval_q                  <= htval_d;
         htinst_q                 <= htinst_d;
         // virtual supervisor mode registers

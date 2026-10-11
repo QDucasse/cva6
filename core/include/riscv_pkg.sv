@@ -445,6 +445,13 @@ package riscv;
     CSR_HCONTEXT         = 12'h6A8,
     CSR_HTIMEDELTA       = 12'h605,
     CSR_HTIMEDELTAH      = 12'h615,
+    // Hidden-time extension (custom hypervisor R/W range)
+    CSR_HTIMECTL         = 12'h6C0,
+    CSR_HEXIT_TIME       = 12'h6C1,
+    CSR_HHIDDEN_TIME     = 12'h6C2,
+    CSR_HVTIMECMP        = 12'h6C3,
+    CSR_HEXIT_CYCLE      = 12'h6C4,
+    CSR_HHIDDEN_CYCLE    = 12'h6C5,
     // Machine Mode CSRs
     CSR_MSTATUS          = 12'h300,
     CSR_MISA             = 12'h301,
