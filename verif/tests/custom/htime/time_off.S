@@ -1,0 +1,33 @@
+# Copyright 2026 CentraleSupélec
+#
+# Licensed under the Solderpad Hardware Licence, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# SPDX-License-Identifier: Apache-2.0 WITH SHL-2.0
+# You may obtain a copy of the License at https://solderpad.org/licenses/
+#
+# Original Author: Quentin Ducasse - CentraleSupélec (quentin.ducasse@centralesupelec.fr)
+#
+# Hidden-time feature off (RVHiddenTime=0): time is not implemented, every read
+# is an illegal instruction, even in M. Run on cv64a6_imafdch_sv39.
+
+#include "htime_macros.h"
+
+RVTEST_RV64M
+RVTEST_CODE_BEGIN
+
+  # 1. M read of time -> illegal.
+  li   TESTNUM, 1
+  PROBE(csrr a1, time)
+  EXPECT_ILLEGAL
+
+  j pass
+
+  TEST_PASSFAIL
+
+  HTIME_MTVEC_HANDLER
+
+RVTEST_CODE_END
+
+RVTEST_DATA_BEGIN
+  TEST_DATA
+RVTEST_DATA_END
