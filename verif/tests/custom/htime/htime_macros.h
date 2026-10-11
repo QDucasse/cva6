@@ -39,6 +39,13 @@
 
 #define HTIMECTL_HHAE   (1 << 0)
 
+// Sstc
+#define CSR_STIMECMP_NUM    0x14d
+#define CSR_VSTIMECMP_NUM   0x24d
+#define ENVCFG_STCE         (1 << 63)
+#define MIP_VSTIP_BIT       (1 << 6)
+#define HSTATUS_VTW_BIT     (1 << 21)
+
 // Drop from M to the mode given by mpp_val (MSTATUS_MPP_*), continuing at the next instruction.
 // Set MSTATUS_MPV in mpp_val to enter VS/VU instead of HS/U.
 #define ENTER_MODE(mpp_val)                                             \

@@ -8,7 +8,7 @@
 # Original Author: Quentin Ducasse - CentraleSupélec (quentin.ducasse@centralesupelec.fr)
 #
 # Hidden-time feature off (RVHiddenTime=0): time and htimedelta are not implemented,
-# nor are the hidden-time CSRs: every access is an illegal instruction, even in M.
+# nor are the hidden-time and Sstc CSRs: every access is an illegal instruction, even in M.
 # Run on cv64a6_imafdch_sv39.
 
 #include "htime_macros.h"
@@ -42,6 +42,18 @@ RVTEST_CODE_BEGIN
   PROBE_OFF(CSR_HVTIMECMP_NUM)
   PROBE_OFF(CSR_HEXIT_CYCLE_NUM)
   PROBE_OFF(CSR_HHIDDEN_CYCLE_NUM)
+
+  # 4. No Sstc: stimecmp/vstimecmp illegal, menvcfg/henvcfg.STCE read-only zero.
+  li   TESTNUM, 4
+  PROBE_OFF(CSR_STIMECMP_NUM)
+  PROBE_OFF(CSR_VSTIMECMP_NUM)
+  li   t0, ENVCFG_STCE
+  csrs menvcfg, t0
+  csrs henvcfg, t0
+  csrr t0, menvcfg
+  bltz t0, fail
+  csrr t0, henvcfg
+  bltz t0, fail
 
   j pass
 
