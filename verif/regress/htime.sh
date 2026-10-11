@@ -60,6 +60,7 @@ for target in "${htime_target}" "${base_target}"; do
     run testlist_htime.yaml "${target}" --test=rv64h-p-htime-hide-view
     run testlist_htime.yaml "${target}" --test=rv64h-p-htime-sstc
     run testlist_htime.yaml "${target}" --test=rv64h-p-htime-sstc-irq
+    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-hvti
   else
     run testlist_htime.yaml "${target}" --test=rv64h-p-htime-time-off
   fi

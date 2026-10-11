@@ -9,6 +9,7 @@
 #
 # Hidden-time feature off (RVHiddenTime=0): time and htimedelta are not implemented,
 # nor are the hidden-time and Sstc CSRs: every access is an illegal instruction, even in M.
+# Interrupt 24 is not implemented either.
 # Run on cv64a6_imafdch_sv39.
 
 #include "htime_macros.h"
@@ -54,6 +55,18 @@ RVTEST_CODE_BEGIN
   bltz t0, fail
   csrr t0, henvcfg
   bltz t0, fail
+
+  # 5. No interrupt 24: mideleg[24] reads 0 and mie[24] is not writable.
+  li   TESTNUM, 5
+  li   t1, MIP_HVTIP
+  csrs mideleg, t1
+  csrr t0, mideleg
+  and  t0, t0, t1
+  bnez t0, fail
+  csrs mie, t1
+  csrr t0, mie
+  and  t0, t0, t1
+  bnez t0, fail
 
   j pass
 
