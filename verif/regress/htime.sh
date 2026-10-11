@@ -53,6 +53,7 @@ for target in "${htime_target}" "${base_target}"; do
   if [[ "${target}" == "${htime_target}" ]]; then
     run testlist_htime.yaml "${target}" --test=rv64h-p-htime-time-mtime
     run testlist_htime.yaml "${target}" --test=rv64h-p-htime-time-counteren
+    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-time-vs
   else
     run testlist_htime.yaml "${target}" --test=rv64h-p-htime-time-off
   fi

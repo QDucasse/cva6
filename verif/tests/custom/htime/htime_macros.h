@@ -25,10 +25,16 @@
 #define COUNTEREN_TM    (1 << 1)
 #define MSTATUS_MPP_U   (0 << 11)
 #define MSTATUS_MPP_S   (1 << 11)
+#define MSTATUS_MPV     (1 << 39)
+#define CAUSE_VIRTUAL_INSTRUCTION 22
+
+#define CSR_HTIMEDELTA_NUM  0x605
+#define CSR_HTIMEDELTAH_NUM 0x615
 
 // Drop from M to the mode given by mpp_val (MSTATUS_MPP_*), continuing at the next instruction.
+// Set MSTATUS_MPV in mpp_val to enter VS/VU instead of HS/U.
 #define ENTER_MODE(mpp_val)                                             \
-  li   t0, MSTATUS_MPP;                                                 \
+  li   t0, MSTATUS_MPP | MSTATUS_MPV;                                   \
   csrc mstatus, t0;                                                     \
   li   t0, (mpp_val);                                                   \
   csrs mstatus, t0;                                                     \
@@ -51,6 +57,7 @@
 
 #define EXPECT_NO_FAULT   bnez s10, fail
 #define EXPECT_ILLEGAL    li t0, CAUSE_ILLEGAL_INSTRUCTION; bne s10, t0, fail
+#define EXPECT_VIRTUAL    li t0, CAUSE_VIRTUAL_INSTRUCTION; bne s10, t0, fail
 
 // M-mode handler:
 //   ebreak            -> return to M after the ebreak
@@ -69,7 +76,7 @@ mtvec_handler:                                                          \
 1:                                                                      \
   li   t6, CAUSE_ILLEGAL_INSTRUCTION;                                   \
   beq  t5, t6, 3f;                                                      \
-  li   t6, 22; /* virtual instruction */                                \
+  li   t6, CAUSE_VIRTUAL_INSTRUCTION;                                \
   bne  t5, t6, fail;                                                    \
 3:                                                                      \
   mv   s10, t5;                                                         \
