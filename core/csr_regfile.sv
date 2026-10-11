@@ -713,6 +713,12 @@ module csr_regfile
           if (CVA6Cfg.IS_XLEN32) csr_rdata = cycle_q[63:32];
           else read_access_exception = 1'b1;
         else read_access_exception = 1'b1;
+        // time is only implemented in hardware with the hidden-time extension (V=0 view for now);
+        // otherwise reads trap and M-mode firmware emulates them from the CLINT.
+        riscv::CSR_TIME:
+        if (CVA6Cfg.RVZicntr && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64 && !v_q)
+          csr_rdata = time_i[CVA6Cfg.XLEN-1:0];
+        else read_access_exception = 1'b1;
         riscv::CSR_INSTRET:
         if (CVA6Cfg.RVZicntr) csr_rdata = instret_q[CVA6Cfg.XLEN-1:0];
         else read_access_exception = 1'b1;
