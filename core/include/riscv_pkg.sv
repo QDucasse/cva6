@@ -415,6 +415,7 @@ package riscv;
     CSR_VSTVAL           = 12'h243,
     CSR_VSIP             = 12'h244,
     CSR_VSATP            = 12'h280,
+    CSR_VSTIMECMP        = 12'h24D,
     // Supervisor Mode CSRs
     CSR_SSTATUS          = 12'h100,
     CSR_SIE              = 12'h104,
@@ -426,6 +427,7 @@ package riscv;
     CSR_SCAUSE           = 12'h142,
     CSR_STVAL            = 12'h143,
     CSR_SIP              = 12'h144,
+    CSR_STIMECMP         = 12'h14D,
     CSR_SATP             = 12'h180,
     // Hypervisor-extended Supervisor Mode CSRs
     CSR_HSTATUS          = 12'h600,
