@@ -2568,11 +2568,13 @@ module csr_regfile
               virtual_privilege_violation = v_q & mcounteren_q[sel_cnt_en] & ~hcounteren_q[sel_cnt_en];
               privilege_violation = ~mcounteren_q[sel_cnt_en];
             end else if (priv_lvl_o == riscv::PRIV_LVL_U && CVA6Cfg.RVU) begin
-              virtual_privilege_violation = v_q & mcounteren_q[sel_cnt_en] & ~hcounteren_q[sel_cnt_en];
+              // U: illegal unless both mcounteren and scounteren allow it.
+              // VU: illegal if mcounteren denies, else virtual if hcounteren or scounteren denies.
+              virtual_privilege_violation = v_q & mcounteren_q[sel_cnt_en] & (~hcounteren_q[sel_cnt_en] | ~scounteren_q[sel_cnt_en]);
               if (v_q) begin
-                privilege_violation = ~mcounteren_q[sel_cnt_en] & ~scounteren_q[sel_cnt_en] & hcounteren_q[sel_cnt_en];
+                privilege_violation = ~mcounteren_q[sel_cnt_en];
               end else begin
-                privilege_violation = ~mcounteren_q[sel_cnt_en] & ~scounteren_q[sel_cnt_en];
+                privilege_violation = ~mcounteren_q[sel_cnt_en] | ~scounteren_q[sel_cnt_en];
               end
             end else if (priv_lvl_o == riscv::PRIV_LVL_M) begin
               privilege_violation = 1'b0;
@@ -2586,11 +2588,13 @@ module csr_regfile
               virtual_privilege_violation = v_q & mcounteren_q[sel_cnt_en] & ~hcounteren_q[sel_cnt_en];
               privilege_violation = ~mcounteren_q[sel_cnt_en];
             end else if (priv_lvl_o == riscv::PRIV_LVL_U && CVA6Cfg.RVU) begin
-              virtual_privilege_violation = v_q & mcounteren_q[sel_cnt_en] & ~hcounteren_q[sel_cnt_en];
+              // U: illegal unless both mcounteren and scounteren allow it.
+              // VU: illegal if mcounteren denies, else virtual if hcounteren or scounteren denies.
+              virtual_privilege_violation = v_q & mcounteren_q[sel_cnt_en] & (~hcounteren_q[sel_cnt_en] | ~scounteren_q[sel_cnt_en]);
               if (v_q) begin
-                privilege_violation = ~mcounteren_q[sel_cnt_en] & ~scounteren_q[sel_cnt_en] & hcounteren_q[sel_cnt_en];
+                privilege_violation = ~mcounteren_q[sel_cnt_en];
               end else begin
-                privilege_violation = ~mcounteren_q[sel_cnt_en] & ~scounteren_q[sel_cnt_en];
+                privilege_violation = ~mcounteren_q[sel_cnt_en] | ~scounteren_q[sel_cnt_en];
               end
             end else if (priv_lvl_o == riscv::PRIV_LVL_M) begin
               privilege_violation = 1'b0;
