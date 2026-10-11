@@ -1,0 +1,64 @@
+// Copyright 2026 CentraleSupélec
+// SPDX-License-Identifier: Apache-2.0 WITH SHL-2.0
+//
+// Device tree for the htime OpenSBI boot test on the Verilator
+// testharness. Embedded in fw_payload with FW_FDT_PATH, so the boot ROM DTB is
+// not used. timebase = clock / 4: ariane_tb.cpp toggles rtc_i every 2 cycles.
+// The root compatible is not "eth,ariane-bare-dev" on purpose: that string
+// selects OpenSBI's openhwgroup/ariane.c override, which hardcodes a 1 MHz
+// mtimer and a PLIC; the generic platform takes everything from this file.
+
+/dts-v1/;
+
+/ {
+  #address-cells = <2>;
+  #size-cells = <2>;
+  compatible = "eth,ariane-htime-sim";
+  model = "eth,ariane-htime-sim";
+  chosen {
+    stdout-path = "/soc/uart@10000000:115200";
+  };
+  cpus {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    timebase-frequency = <12500000>;
+    CPU0: cpu@0 {
+      clock-frequency = <50000000>;
+      device_type = "cpu";
+      reg = <0>;
+      status = "okay";
+      compatible = "eth, ariane", "riscv";
+      riscv,isa = "rv64imafdch_zicntr_zicsr_zifencei_zihpm_sstc";
+      mmu-type = "riscv,sv39";
+      CPU0_intc: interrupt-controller {
+        #interrupt-cells = <1>;
+        interrupt-controller;
+        compatible = "riscv,cpu-intc";
+      };
+    };
+  };
+  memory@80000000 {
+    device_type = "memory";
+    reg = <0x0 0x80000000 0x0 0x10000000>;
+  };
+  soc {
+    #address-cells = <2>;
+    #size-cells = <2>;
+    compatible = "eth,ariane-bare-soc", "simple-bus";
+    ranges;
+    clint@2000000 {
+      compatible = "riscv,clint0";
+      interrupts-extended = <&CPU0_intc 3 &CPU0_intc 7>;
+      reg = <0x0 0x2000000 0x0 0xc0000>;
+      reg-names = "control";
+    };
+    uart@10000000 {
+      compatible = "ns16550a";
+      reg = <0x0 0x10000000 0x0 0x1000>;
+      clock-frequency = <50000000>;
+      current-speed = <115200>;
+      reg-shift = <2>;
+      reg-io-width = <4>;
+    };
+  };
+};
