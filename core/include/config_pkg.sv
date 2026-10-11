@@ -90,6 +90,8 @@ package config_pkg;
     bit                          RVZicntr;
     // Zihpm RISC-V extension
     bit                          RVZihpm;
+    // Hidden-time extension (hardware time CSR, hides VM-exit time from guests)
+    bit                          RVHiddenTime;
     // Floating Point
     bit                          RVF;
     // Floating Point
@@ -332,6 +334,7 @@ package config_pkg;
     bit          RVZiCbom;
     bit          RVZicntr;
     bit          RVZihpm;
+    bit          RVHiddenTime;
 
     int unsigned NR_SB_ENTRIES;
     int unsigned TRANS_ID_BITS;

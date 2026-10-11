@@ -82,6 +82,7 @@ package build_config_pkg;
     cfg.RVZiCbom = CVA6Cfg.RVZiCbom;
     cfg.RVZicntr = CVA6Cfg.RVZicntr;
     cfg.RVZihpm = CVA6Cfg.RVZihpm;
+    cfg.RVHiddenTime = CVA6Cfg.RVHiddenTime;
     cfg.NR_SB_ENTRIES = CVA6Cfg.NrScoreboardEntries;
     cfg.TRANS_ID_BITS = $clog2(CVA6Cfg.NrScoreboardEntries);
 
