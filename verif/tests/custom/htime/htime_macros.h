@@ -30,6 +30,14 @@
 
 #define CSR_HTIMEDELTA_NUM  0x605
 #define CSR_HTIMEDELTAH_NUM 0x615
+#define CSR_HTIMECTL_NUM      0x6c0
+#define CSR_HEXIT_TIME_NUM    0x6c1
+#define CSR_HHIDDEN_TIME_NUM  0x6c2
+#define CSR_HVTIMECMP_NUM     0x6c3
+#define CSR_HEXIT_CYCLE_NUM   0x6c4
+#define CSR_HHIDDEN_CYCLE_NUM 0x6c5
+
+#define HTIMECTL_HHAE   (1 << 0)
 
 // Drop from M to the mode given by mpp_val (MSTATUS_MPP_*), continuing at the next instruction.
 // Set MSTATUS_MPV in mpp_val to enter VS/VU instead of HS/U.
