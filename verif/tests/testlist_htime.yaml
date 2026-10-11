@@ -26,6 +26,24 @@ testlist:
     gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
     asm_tests: <path_var>/custom/htime/htime_csrs.S
 
+  - test: rv64h-p-htime-hide-routes
+    iterations: 1
+    path_var: TESTS_PATH
+    gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
+    asm_tests: <path_var>/custom/htime/htime_hide_routes.S
+
+  - test: rv64h-p-htime-hide-hs-ctl
+    iterations: 1
+    path_var: TESTS_PATH
+    gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
+    asm_tests: <path_var>/custom/htime/htime_hide_hs_ctl.S
+
+  - test: rv64h-p-htime-hide-view
+    iterations: 1
+    path_var: TESTS_PATH
+    gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
+    asm_tests: <path_var>/custom/htime/htime_hide_view.S
+
   - test: rv64h-p-htime-time-off
     iterations: 1
     path_var: TESTS_PATH
