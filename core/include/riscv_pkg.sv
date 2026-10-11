@@ -366,6 +366,8 @@ package riscv;
   localparam int unsigned IRQ_VS_EXT = 10;
   localparam int unsigned IRQ_M_EXT = 11;
   localparam int unsigned IRQ_HS_EXT = 12;
+  // hidden-time extension: hypervisor virtual-time interrupt (hvtimecmp), custom range
+  localparam int unsigned IRQ_HVTI = 24;
 
   localparam logic [31:0] MIP_SSIP = 1 << IRQ_S_SOFT;
   localparam logic [31:0] MIP_VSSIP = 1 << IRQ_VS_SOFT;
@@ -377,6 +379,7 @@ package riscv;
   localparam logic [31:0] MIP_VSEIP = 1 << IRQ_VS_EXT;
   localparam logic [31:0] MIP_MEIP = 1 << IRQ_M_EXT;
   localparam logic [31:0] MIP_SGEIP = 1 << IRQ_HS_EXT;
+  localparam logic [31:0] MIP_HVTIP = 1 << IRQ_HVTI;
 
   // ----------------------
   // PseudoInstructions Codes
