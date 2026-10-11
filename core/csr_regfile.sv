@@ -327,8 +327,10 @@ module csr_regfile
   logic [63:0] hvtimecmp_q, hvtimecmp_d;
   logic [63:0] hexit_cycle_q, hexit_cycle_d;
   logic [63:0] hhidden_cycle_q, hhidden_cycle_d;
-  // time CSR value: mtime in V=0, mtime + htimedelta in V=1
+  // time CSR value: mtime in V=0, vtime = mtime + htimedelta - hhidden_time in V=1
   logic [63:0] time_rdata;
+  // cycle CSR value: mcycle in V=0, vcycle = mcycle - hhidden_cycle in V=1
+  logic [63:0] cycle_rdata;
   logic [CVA6Cfg.XLEN-1:0] hgeie_q, hgeie_d;
   logic [CVA6Cfg.XLEN-1:0] htinst_q, htinst_d;
   logic [CVA6Cfg.XLEN-1:0] htval_q, htval_d;
@@ -739,7 +741,7 @@ module csr_regfile
         if (CVA6Cfg.IS_XLEN32) csr_rdata = instret_q[63:32];
         else read_access_exception = 1'b1;
         riscv::CSR_CYCLE:
-        if (CVA6Cfg.RVZicntr) csr_rdata = cycle_q[CVA6Cfg.XLEN-1:0];
+        if (CVA6Cfg.RVZicntr) csr_rdata = cycle_rdata[CVA6Cfg.XLEN-1:0];
         else read_access_exception = 1'b1;
         riscv::CSR_CYCLEH:
         if (CVA6Cfg.RVZicntr)
@@ -747,7 +749,7 @@ module csr_regfile
           else read_access_exception = 1'b1;
         else read_access_exception = 1'b1;
         // time is only implemented in hardware with the hidden-time extension; otherwise reads
-        // trap and M-mode firmware emulates them from the CLINT. V=1 sees mtime + htimedelta.
+        // trap and M-mode firmware emulates them from the CLINT. V=1 sees mtime + htimedelta - hhidden_time.
         riscv::CSR_TIME:
         if (CVA6Cfg.RVZicntr && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64)
           csr_rdata = time_rdata[CVA6Cfg.XLEN-1:0];
@@ -2566,6 +2568,24 @@ module csr_regfile
         debug_mode_d = 1'b0;
       end
     end
+
+    // ---------------------------
+    // Hidden-time latch / accumulate
+    // ---------------------------
+    // Only V edges matter: latch mtime/mcycle when a trap commits with V 1->0 (to HS or M),
+    // accumulate the hidden interval when an xRET commits with V 0->1 and HHAE=1.
+    // This comes after the CSR write logic on purpose: a hardware update in the same cycle
+    // overrides a software write to hexit_* / hhidden_*.
+    if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) begin
+      if (ex_i.valid && v_q && !v_d) begin
+        hexit_time_d  = time_i;
+        hexit_cycle_d = cycle_q;
+      end
+      if (eret_o && !v_q && v_d && htimectl_hhae_q) begin
+        hhidden_time_d  = hhidden_time_q + (time_i - hexit_time_q);
+        hhidden_cycle_d = hhidden_cycle_q + (cycle_q - hexit_cycle_q);
+      end
+    end
   end
 
   // ---------------------------
@@ -2630,7 +2650,9 @@ module csr_regfile
                                     & ((mstatus_q.mie & (priv_lvl_o == riscv::PRIV_LVL_M))
                                     | (CVA6Cfg.RVU & priv_lvl_o != riscv::PRIV_LVL_M));
 
-  assign time_rdata = (CVA6Cfg.RVH && v_q) ? time_i + htimedelta_q : time_i;
+  assign time_rdata = (CVA6Cfg.RVH && v_q) ? time_i + htimedelta_q - hhidden_time_q : time_i;
+  assign cycle_rdata = (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64 && v_q) ?
+      cycle_q - hhidden_cycle_q : cycle_q;
 
   always_comb begin : privilege_check
     if (CVA6Cfg.RVH) begin
