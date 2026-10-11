@@ -1939,6 +1939,12 @@ module decoder
       if (irq_ctrl_i.mie[riscv::IRQ_VS_EXT] && (irq_ctrl_i.mip[riscv::IRQ_VS_EXT])) begin
         interrupt_cause = INTERRUPTS.VS_EXT;
       end
+      // Hypervisor Virtual-Time Interrupt (hidden-time extension): above VS, below HS
+      // interrupts. Only pending in V=1 and never delegated to VS, so always taken in HS.
+      if (CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64 &&
+          irq_ctrl_i.mie[riscv::IRQ_HVTI] && irq_ctrl_i.mip[riscv::IRQ_HVTI]) begin
+        interrupt_cause = INTERRUPTS.HVTI;
+      end
       // Hypervisor Guest External Interrupts
       if (irq_ctrl_i.mie[riscv::IRQ_HS_EXT] && irq_ctrl_i.mip[riscv::IRQ_HS_EXT]) begin
         interrupt_cause = INTERRUPTS.HS_EXT;

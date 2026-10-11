@@ -361,6 +361,7 @@ module cva6
     logic [CVA6Cfg.XLEN-1:0] VS_EXT;
     logic [CVA6Cfg.XLEN-1:0] M_EXT;
     logic [CVA6Cfg.XLEN-1:0] HS_EXT;
+    logic [CVA6Cfg.XLEN-1:0] HVTI;
   };
 
   localparam interrupts_t INTERRUPTS = '{
@@ -373,7 +374,8 @@ module cva6
       S_EXT: (CVA6Cfg.XLEN'(1) << (CVA6Cfg.XLEN - 1)) | CVA6Cfg.XLEN'(riscv::IRQ_S_EXT),
       VS_EXT: (CVA6Cfg.XLEN'(1) << (CVA6Cfg.XLEN - 1)) | CVA6Cfg.XLEN'(riscv::IRQ_VS_EXT),
       M_EXT: (CVA6Cfg.XLEN'(1) << (CVA6Cfg.XLEN - 1)) | CVA6Cfg.XLEN'(riscv::IRQ_M_EXT),
-      HS_EXT: (CVA6Cfg.XLEN'(1) << (CVA6Cfg.XLEN - 1)) | CVA6Cfg.XLEN'(riscv::IRQ_HS_EXT)
+      HS_EXT: (CVA6Cfg.XLEN'(1) << (CVA6Cfg.XLEN - 1)) | CVA6Cfg.XLEN'(riscv::IRQ_HS_EXT),
+      HVTI: (CVA6Cfg.XLEN'(1) << (CVA6Cfg.XLEN - 1)) | CVA6Cfg.XLEN'(riscv::IRQ_HVTI)
   };
 
   // ------------------------------------------

@@ -330,6 +330,9 @@ module csr_regfile
   // Sstc (hidden-time configs only): stimecmp/vstimecmp and the menvcfg/henvcfg STCE bits.
   // henvcfg.STCE reads 0 while menvcfg.STCE is 0, so its effective value is the AND of both.
   localparam bit SstcEn = CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64;
+  // Interrupt 24 (hvtimecmp): mideleg[24] hardwired to 1, hideleg[24] to 0. Kept apart from
+  // HS_DELEG_INTERRUPTS, which also masks hie/hip.
+  localparam logic [63:0] HVTI_INTERRUPTS = SstcEn ? 64'(riscv::MIP_HVTIP) : 64'b0;
   logic menvcfg_stce_q, menvcfg_stce_d;
   logic henvcfg_stce_q, henvcfg_stce_d;
   logic henvcfg_stce;
@@ -338,8 +341,8 @@ module csr_regfile
   // guest time seen by the comparators: frozen at the exit value while in HS/M with HHAE=1
   logic [63:0] vtime_eff;
   // registered comparator outputs (1-cycle lag on interrupt assertion)
-  logic stip_cmp_q, vstip_cmp_q;
-  // mip as seen by software and the interrupt logic: STIP/VSTIP driven by the comparators
+  logic stip_cmp_q, vstip_cmp_q, hvti_cmp_q;
+  // mip as seen by software and the interrupt logic: STIP/VSTIP/HVTIP driven by the comparators
   logic [CVA6Cfg.XLEN-1:0] mip_rdata;
   // time CSR value: mtime in V=0, vtime = mtime + htimedelta - hhidden_time in V=1
   logic [63:0] time_rdata;
@@ -708,7 +711,7 @@ module csr_regfile
         else read_access_exception = 1'b1;
         riscv::CSR_MIDELEG:
         if (CVA6Cfg.RVS)
-          csr_rdata = (CVA6Cfg.RVH) ? mideleg_q | HS_DELEG_INTERRUPTS[CVA6Cfg.XLEN-1:0] : mideleg_q;
+          csr_rdata = (CVA6Cfg.RVH) ? mideleg_q | HS_DELEG_INTERRUPTS[CVA6Cfg.XLEN-1:0] | HVTI_INTERRUPTS[CVA6Cfg.XLEN-1:0] : mideleg_q;
         else read_access_exception = 1'b1;
         riscv::CSR_MIE: csr_rdata = mie_q;
         riscv::CSR_MTVEC: csr_rdata = mtvec_q;
@@ -1830,7 +1833,8 @@ module csr_regfile
                     | CVA6Cfg.XLEN'(riscv::MIP_STIP)
                     | CVA6Cfg.XLEN'(riscv::MIP_SEIP);
             if (CVA6Cfg.RVH) begin
-              mideleg_d = (mideleg_q & ~mask) | (csr_wdata & mask) | HS_DELEG_INTERRUPTS[CVA6Cfg.XLEN-1:0];
+              mideleg_d = (mideleg_q & ~mask) | (csr_wdata & mask) | HS_DELEG_INTERRUPTS[CVA6Cfg.XLEN-1:0]
+                          | HVTI_INTERRUPTS[CVA6Cfg.XLEN-1:0];
             end else begin
               mideleg_d = (mideleg_q & ~mask) | (csr_wdata & mask);
             end
@@ -1842,6 +1846,7 @@ module csr_regfile
         riscv::CSR_MIE: begin
           if (CVA6Cfg.RVH) begin
             mask = HS_DELEG_INTERRUPTS[CVA6Cfg.XLEN-1:0]
+                    | HVTI_INTERRUPTS[CVA6Cfg.XLEN-1:0]
                     | CVA6Cfg.XLEN'(riscv::MIP_SSIP)
                     | CVA6Cfg.XLEN'(riscv::MIP_STIP)
                     | CVA6Cfg.XLEN'(riscv::MIP_SEIP)
@@ -2703,6 +2708,8 @@ module csr_regfile
       // hip.VSTIP = hvip.VSTIP | vstimecmp interrupt
       if (henvcfg_stce) mip_rdata[riscv::IRQ_VS_TIMER] = mip_q[riscv::IRQ_VS_TIMER] | vstip_cmp_q;
     end
+    // mip[24] = V && (vtime_eff >= hvtimecmp): never pending in HS/M, read-only
+    if (SstcEn) mip_rdata[riscv::IRQ_HVTI] = v_q & hvti_cmp_q;
   end
 
   always_comb begin : privilege_check
@@ -3070,7 +3077,7 @@ module csr_regfile
       // supervisor mode registers
       if (CVA6Cfg.RVS) begin
         medeleg_q <= {CVA6Cfg.XLEN{1'b0}};
-        mideleg_q    <= (CVA6Cfg.RVH) ? CVA6Cfg.XLEN'(HS_DELEG_INTERRUPTS[CVA6Cfg.XLEN-1:0]) : {CVA6Cfg.XLEN{1'b0}};
+        mideleg_q    <= (CVA6Cfg.RVH) ? CVA6Cfg.XLEN'(HS_DELEG_INTERRUPTS[CVA6Cfg.XLEN-1:0] | HVTI_INTERRUPTS[CVA6Cfg.XLEN-1:0]) : {CVA6Cfg.XLEN{1'b0}};
         sepc_q <= {CVA6Cfg.XLEN{1'b0}};
         scause_q <= {CVA6Cfg.XLEN{1'b0}};
         stvec_q <= {CVA6Cfg.XLEN{1'b0}};
@@ -3107,6 +3114,7 @@ module csr_regfile
         vstimecmp_q              <= '1;
         stip_cmp_q               <= 1'b0;
         vstip_cmp_q              <= 1'b0;
+        hvti_cmp_q               <= 1'b0;
         htval_q                  <= {CVA6Cfg.XLEN{1'b0}};
         htinst_q                 <= {CVA6Cfg.XLEN{1'b0}};
         // virtual supervisor mode registers
@@ -3218,6 +3226,7 @@ module csr_regfile
         vstimecmp_q              <= vstimecmp_d;
         stip_cmp_q               <= SstcEn && (time_i >= stimecmp_q);
         vstip_cmp_q              <= SstcEn && (vtime_eff >= vstimecmp_q);
+        hvti_cmp_q               <= SstcEn && (vtime_eff >= hvtimecmp_q);
         htval_q                  <= htval_d;
         htinst_q                 <= htinst_d;
         // virtual supervisor mode registers
