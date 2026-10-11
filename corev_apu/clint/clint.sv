@@ -31,6 +31,7 @@ module clint #(
     input  axi_req_t            axi_req_i,
     output axi_resp_t           axi_resp_o,
     input  logic                rtc_i,       // Real-time clock in (usually 32.768 kHz)
+    output logic [63:0]         mtime_o,     // Current mtime value, broadcast to all harts
     output logic [NR_CORES-1:0] timer_irq_o, // Timer interrupts
     output logic [NR_CORES-1:0] ipi_o        // software interrupt (a.k.a inter-process-interrupt)
 );
@@ -221,6 +222,7 @@ module clint #(
     end
 
     assign ipi_o = msip_q;
+    assign mtime_o = mtime_q;
 
     // -------------
     // Assertions

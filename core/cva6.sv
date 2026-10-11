@@ -334,6 +334,8 @@ module cva6
     input logic ipi_i,
     // Timer (async) interrupt - SUBSYSTEM
     input logic time_irq_i,
+    // Platform mtime, read by the time CSR (RVHiddenTime) - SUBSYSTEM
+    input logic [63:0] time_i,
     // Debug (async) request - SUBSYSTEM
     input logic debug_req_i,
     // Probes to build RVFI, can be left open when not used - RVFI
@@ -1223,6 +1225,7 @@ module cva6
       .clk_i,
       .rst_ni,
       .time_irq_i,
+      .time_i,
       .flush_o                            (flush_csr_ctrl),
       .halt_csr_o                         (halt_csr_ctrl),
       .commit_instr_i                     (commit_instr_id_commit[0]),

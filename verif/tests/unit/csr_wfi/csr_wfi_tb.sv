@@ -69,6 +69,7 @@ module csr_wfi_case #(
       .clk_i(clk),
       .rst_ni(rst_n),
       .time_irq_i(1'b0),
+      .time_i('0),
       .halt_csr_o(halt),
       .commit_instr_i(instruction),
       .commit_ack_i(ack),

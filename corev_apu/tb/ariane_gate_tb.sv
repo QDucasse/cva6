@@ -119,6 +119,7 @@ module ariane_gate_tb;
         .irq_i                ( 2'b00 /*irqs*/      ),
         .ipi_i                ( 1'b0  /*ipi*/       ),
         .time_irq_i           ( 1'b0  /*timer_irq*/ ),
+        .time_i               ( '0    ),
         .debug_req_i          ( 1'b0                ),
         .rvfi_probes_o        ( rvfi_probes         ),
         .noc_req_o            ( axi_ariane_req      ),

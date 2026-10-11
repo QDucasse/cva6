@@ -32,6 +32,8 @@ module csr_regfile
     input logic rst_ni,
     // Timer threw an interrupt - SUBSYSTEM
     input logic time_irq_i,
+    // Platform mtime value - SUBSYSTEM
+    input logic [63:0] time_i,
     // send a flush request out when a CSR with a side effect changes - CONTROLLER
     output logic flush_o,
     // halt requested - CONTROLLER

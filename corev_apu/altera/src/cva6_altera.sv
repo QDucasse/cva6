@@ -164,6 +164,7 @@ logic ndmreset;
 logic ndmreset_n;
 logic debug_req_irq;
 logic timer_irq;
+logic [63:0] mtime;
 logic ipi;
 
 logic clk;
@@ -705,6 +706,7 @@ ariane #(
     .irq_i        ( irq                 ),
     .ipi_i        ( ipi                 ),
     .time_irq_i   ( timer_irq           ),
+    .time_i       ( mtime               ),
     .rvfi_probes_o( /* open */          ),
     .debug_req_i  ( debug_req_irq       ),
     .noc_req_o    ( axi_ariane_req      ),
@@ -744,6 +746,7 @@ clint #(
     .axi_req_i   ( axi_clint_req  ),
     .axi_resp_o  ( axi_clint_resp ),
     .rtc_i       ( rtc            ),
+    .mtime_o     ( mtime          ),
     .timer_irq_o ( timer_irq      ),
     .ipi_o       ( ipi            )
 );

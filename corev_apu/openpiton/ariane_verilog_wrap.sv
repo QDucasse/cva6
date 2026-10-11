@@ -326,6 +326,7 @@ module ariane_verilog_wrap
     .irq_i       ( irq        ),
     .ipi_i       ( ipi        ),
     .time_irq_i  ( time_irq   ),
+    .time_i      ( '0         ), // no hidden-time support
     .debug_req_i ( debug_req  ),
     .noc_req_o   ( l15_req    ),
     .noc_resp_i  ( l15_rtrn   )

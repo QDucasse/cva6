@@ -113,6 +113,7 @@ module cva6_tb_wrapper import uvmt_cva6_pkg::*; #(
     .irq_i                ( {1'b0, irq_i[0]}             ),
     .ipi_i                ( 1'b0                         ),
     .time_irq_i           ( irq_i[1]                     ),
+    .time_i               ( '0                           ),
     .debug_req_i          ( debug_if.debug_req           ),
     .rvfi_probes_o        ( rvfi_probes                  ),
     .cvxif_req_o          ( cvxif_req                    ),
