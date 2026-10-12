@@ -26,14 +26,22 @@
 
 #define COUNTEREN_CY  (1 << 0)
 #define DELTA         0x0000100000000000
+#ifndef SPIN_CYCLES
 #define SPIN_CYCLES   20000
+#endif
 #define SSTATUS_SIE_BIT 2
 #define IRQ_TIMER_CAUSE ((1 << 63) | 5)
 
 # Deadlines relative to the current time (ticks).
+#ifdef HTIME_QEMU
+#define NEAR          1000
+#define FAR           10000
+#define TIMEOUT       40000
+#else
 #define NEAR          100
 #define FAR           1000
 #define TIMEOUT       4000
+#endif
 
 # In HS or VS: arm stimecmp at time + dt, enable SIE, wait for the interrupt handler.
 #   s2 = time when armed
@@ -42,7 +50,8 @@
   li   t0, MIP_STIP;                                                    \
   csrs sie, t0;                                                         \
   csrr s2, time;                                                        \
-  addi t1, s2, dt;                                                      \
+  li   t1, dt;                                                          \
+  add  t1, s2, t1;                                                      \
   csrw CSR_STIMECMP_NUM, t1;                                            \
   csrsi sstatus, SSTATUS_SIE_BIT;                                       \
 1:                                                                      \
@@ -75,7 +84,8 @@
   li   t0, MIP_STIP;                                                    \
   csrs sie, t0;                                                         \
   csrr s2, time;                                                        \
-  addi t1, s2, FAR;                                                     \
+  li   t1, FAR;                                                         \
+  add  t1, s2, t1;                                                      \
   csrw CSR_STIMECMP_NUM, t1;                                            \
   csrr s5, time;                                                        \
   .option push;                                                         \
@@ -152,7 +162,8 @@ RVTEST_CODE_BEGIN
   li   t0, MIP_STIP
   csrs sie, t0
   csrr s2, time
-  addi t1, s2, FAR
+  li   t1, FAR
+  add  t1, s2, t1
   csrw CSR_STIMECMP_NUM, t1
   wfi
   csrr s3, time

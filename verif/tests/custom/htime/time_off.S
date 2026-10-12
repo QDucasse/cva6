@@ -17,6 +17,8 @@
 RVTEST_RV64M
 RVTEST_CODE_BEGIN
 
+#ifndef HTIME_QEMU
+  # QEMU always implements time and, with H, htimedelta: steps 1-2 are CVA6 only.
   # 1. M read of time -> illegal.
   li   TESTNUM, 1
   PROBE(csrr a1, time)
@@ -28,6 +30,7 @@ RVTEST_CODE_BEGIN
   EXPECT_ILLEGAL
   PROBE(csrw CSR_HTIMEDELTA_NUM, zero)
   EXPECT_ILLEGAL
+#endif
 
 #define PROBE_OFF(csr)                                                  \
   PROBE(csrr a1, csr);                                                  \

@@ -28,7 +28,9 @@
 
 #define COUNTEREN_CY    (1 << 0)
 #define DELTA           0x0000100000000000
+#ifndef SPIN_CYCLES
 #define SPIN_CYCLES     20000
+#endif
 #define SSTATUS_SIE_BIT 2
 #define HSTATUS_SPV     (1 << 7)
 #define IRQ_HVTI_CAUSE  ((1 << 63) | IRQ_HVTI)
@@ -36,9 +38,15 @@
 #define IRQ_SSI_CAUSE   ((1 << 63) | 1)
 
 # Deadline relative to the current guest time (ticks), and the guest-charged bound.
+#ifdef HTIME_QEMU
+#define NEAR            10000
+#define B               BOUND_TICKS
+#define TIMEOUT         40000
+#else
 #define NEAR            200
 #define B               8
 #define TIMEOUT         4000
+#endif
 
 # In VS: s5 = s8 on entry, s3 = guest time; read time into s6 until s8 is set.
 #define GUEST_WAIT_HVTI                                                 \
@@ -69,7 +77,8 @@
   add  t0, t0, t1;                                                      \
   csrr t1, CSR_HHIDDEN_TIME_NUM;                                        \
   sub  t0, t0, t1;                                                      \
-  addi t0, t0, NEAR;                                                    \
+  li   t1, NEAR;                                                        \
+  add  t0, t0, t1;                                                      \
   csrw CSR_HVTIMECMP_NUM, t0;                                           \
   li   s8, 0;                                                           \
   csrr t0, mcycle;                                                      \

@@ -36,6 +36,7 @@ RVTEST_CODE_BEGIN
   li   TESTNUM, 2
   bgeu t0, t2, fail
 
+#ifndef HTIME_QEMU
   # 3. time ticks at clk/MTIME_DIV: MTIME_DIV*dtime ~= dcycle.
   li   TESTNUM, 3
   csrr t0, time
@@ -57,6 +58,7 @@ RVTEST_CODE_BEGIN
 2:
   li   t6, RATE_SLACK
   bgtu t5, t6, fail
+#endif
 
   j pass
 

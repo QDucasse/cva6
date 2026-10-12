@@ -80,14 +80,16 @@ RVTEST_CODE_BEGIN
   csrr t0, henvcfg
   bgez t0, fail
 
-  # 2. stimecmp/vstimecmp reset to all ones and are R/W from M regardless of STCE and TM.
+  # 2. stimecmp/vstimecmp reset to all ones (QEMU: 0) and are R/W from M regardless of STCE and TM.
   li   TESTNUM, 2
   SSTC_CFG(0, 0, 0, 0)
+#ifndef HTIME_QEMU
   li   t0, -1
   csrr a1, CSR_STIMECMP_NUM
   bne  a1, t0, fail
   csrr a1, CSR_VSTIMECMP_NUM
   bne  a1, t0, fail
+#endif
   li   t1, 0x1111222233334444
   csrw CSR_STIMECMP_NUM, t1
   csrr a1, CSR_STIMECMP_NUM
@@ -208,6 +210,10 @@ RVTEST_CODE_BEGIN
   csrw CSR_VSTIMECMP_NUM, zero
   EXPECT_MIP_SET(MIP_VSTIP_BIT)
   csrr t0, hvip
+#ifdef HTIME_QEMU
+  # QEMU's hvip also echoes the non-VS mip bits (MTIP, STIP) while hvien=0.
+  andi t0, t0, MIP_VSTIP_BIT
+#endif
   bnez t0, fail
   SSTC_CFG(1, 0, COUNTEREN_TM, COUNTEREN_TM)
   EXPECT_MIP_CLEAR(MIP_VSTIP_BIT)
