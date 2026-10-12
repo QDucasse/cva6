@@ -20,6 +20,18 @@
 #include "riscv_test.h"
 #include "test_macros.h"
 
+// QEMU virt (-DHTIME_QEMU): time is a 10 MHz clock, mcycle the host TSC and an exit
+// costs microseconds of host time. MTIME_DIV is then only an upper bound on cycles
+// per tick (TSC <= 10 GHz); spins and bounds are scaled to match. Checks that rely
+// on the CVA6 timing or reset values are left out.
+#ifdef HTIME_QEMU
+#define MTIME_DIV     1000
+#define SPIN_CYCLES   20000000
+#define BOUND_TICKS   1000
+#define BOUND_CYCLES  1000000
+#define OFFSET        0x100000000
+#endif
+
 #define CLINT_MTIME     0x0200bff8
 
 #define COUNTEREN_TM    (1 << 1)

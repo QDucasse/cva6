@@ -30,15 +30,21 @@
 #ifndef MTIME_DIV
 #define MTIME_DIV     4
 #endif
+#ifndef SPIN_CYCLES
 #define SPIN_CYCLES   20000
+#endif
 // Guest-visible delta across a warm hidden exit: B ticks, 2*B cycles.
 #ifndef BOUND_TICKS
 #define BOUND_TICKS   8
 #endif
+#ifndef BOUND_CYCLES
 #define BOUND_CYCLES  (2 * BOUND_TICKS)
+#endif
 
 #define DELTA         0x0000100000000000
+#ifndef OFFSET
 #define OFFSET        (1 << 24)
+#endif
 
 #define COUNTEREN_CY  (1 << 0)
 #define CAUSE_VS_ECALL 10
