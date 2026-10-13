@@ -23,12 +23,13 @@ package tb_pkg;
 
       pmp_reg = '0;
       for (int i = 0; i < WIDTH - 2 && i < PMP_LEN; i++) begin
+        // no bit-select writes: Verilator 5.024 generates invalid C++ for them in static class functions
         if (i + 3 > size_i) begin
-          pmp_reg[i] = base[i+2];
+          pmp_reg = pmp_reg | ((PMP_LEN'(base >> (i + 2)) & PMP_LEN'(1)) << i);
         end else if (i + 3 == size_i) begin
-          pmp_reg[i] = 1'b0;
+          pmp_reg = pmp_reg & ~(PMP_LEN'(1) << i);
         end else begin
-          pmp_reg[i] = 1'b1;
+          pmp_reg = pmp_reg | (PMP_LEN'(1) << i);
         end
       end
 

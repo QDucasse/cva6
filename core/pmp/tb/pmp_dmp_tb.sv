@@ -81,6 +81,8 @@ module pmp_dmp_tb;
         base = 16'b00011001_00000000;
         size = 8;
         conf_addr[0] = P#(.WIDTH(WIDTH), .PMP_LEN(PMP_LEN))::base_to_conf(base, size);
+        // let the address settle before enabling NAPOT: pmp_entry asserts on the trailing-ones count
+        #1ns;
         conf_pmp[0].addr_mode = riscv::NAPOT;
         conf_pmp[0].access_type = riscv::ACCESS_READ | riscv::ACCESS_WRITE | riscv::ACCESS_EXEC;
 
@@ -140,6 +142,8 @@ module pmp_dmp_tb;
 
         // 2nd test batch: PMP does not allow access
         conf_addr[0] = P#(.WIDTH(WIDTH), .PMP_LEN(PMP_LEN))::base_to_conf(base, size);
+        // let the address settle before enabling NAPOT: pmp_entry asserts on the trailing-ones count
+        #1ns;
         conf_pmp[0].addr_mode = riscv::NAPOT;
         conf_pmp[0].access_type = riscv::ACCESS_EXEC; // No read access
 
