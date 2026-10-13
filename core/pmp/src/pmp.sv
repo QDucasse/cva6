@@ -56,7 +56,7 @@ module pmp
       for (i = 0; i < CVA6Cfg.NrPMPEntries; i++) begin
         // either we are in S or U mode or the config is locked in which
         // case it also applies in M mode
-        if (priv_lvl_i != riscv::PRIV_LVL_M || (conf_i[i].locked && dmpconf_i[i].locked)) begin
+        if (priv_lvl_i != riscv::PRIV_LVL_M || conf_i[i].locked) begin
           if (match[i]) begin
             if (((access_type_i & conf_i[i].access_type) != access_type_i)
                 // JITDomain - the region domain must match the expected domain (DOMI matches all)
