@@ -48,6 +48,8 @@
 #define CSR_HVTIMECMP_NUM     0x6c3
 #define CSR_HEXIT_CYCLE_NUM   0x6c4
 #define CSR_HHIDDEN_CYCLE_NUM 0x6c5
+#define CSR_HEXIT_INSTRET_NUM   0x6c6
+#define CSR_HHIDDEN_INSTRET_NUM 0x6c7
 
 #define HTIMECTL_HHAE   (1 << 0)
 
