@@ -940,7 +940,7 @@ module csr_regfile
         // JITDomain - dmp config read data
         riscv::CSR_DMPCFG0: csr_rdata = dmpcfg_q[CVA6Cfg.XLEN/4-1:0];
         riscv::CSR_DMPCFG1:
-        if (CVA6Cfg.IS_XLEN32) csr_rdata = dmpcfg_q[15:7];
+        if (CVA6Cfg.IS_XLEN32) csr_rdata = dmpcfg_q[15:8];
         else read_access_exception = 1'b1;
         // PMPADDR
         riscv::CSR_PMPADDR0,
