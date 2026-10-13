@@ -457,6 +457,8 @@ package riscv;
     CSR_HVTIMECMP        = 12'h6C3,
     CSR_HEXIT_CYCLE      = 12'h6C4,
     CSR_HHIDDEN_CYCLE    = 12'h6C5,
+    CSR_HEXIT_INSTRET    = 12'h6C6,
+    CSR_HHIDDEN_INSTRET  = 12'h6C7,
     // Machine Mode CSRs
     CSR_MSTATUS          = 12'h300,
     CSR_MISA             = 12'h301,
