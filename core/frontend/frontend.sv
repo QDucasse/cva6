@@ -56,6 +56,12 @@ module frontend
     input logic set_debug_pc_i,
     // JITDomain - Current domain - CSR_REGFILE
     input riscv::dmp_domain_t curdom_i,
+    // JITDomain - The commit flush is caused by a domain change - COMMIT
+    input logic dom_chg_i,
+    // JITDomain - Restart fetch at the resolved target - COMMIT
+    input logic [CVA6Cfg.VLEN-1:0] dom_target_pc_i,
+    // JITDomain - In this domain - COMMIT
+    input riscv::dmp_domain_t dom_target_dom_i,
     // Debug mode state - CSR
     input logic debug_mode_i,
     // Handshake between CACHE and FRONTEND (fetch) - CACHES
@@ -422,7 +428,13 @@ module frontend
     // TODO(zarubaf) This adder can at least be merged with the one in the csr_regfile stage
     if (set_pc_commit_i) begin
       npc_d = pc_commit_i + (halt_i ? '0 : {{CVA6Cfg.VLEN - 3{1'b0}}, 3'b100});
-      expdom_d = riscv::DOMI;
+      expdom_d = curdom_i;
+      // JITDomain - a committed chdom/retdom is a jump: restart at its resolved target, in the new domain
+      // (curdom_i is only updated in the next cycle, so take the domain from commit directly)
+      if (dom_chg_i) begin
+        npc_d    = dom_target_pc_i;
+        expdom_d = dom_target_dom_i;
+      end
     end
     // 7. Debug
     // enter debug on a hard-coded base-address

@@ -208,7 +208,8 @@ module scoreboard #(
         end
         mem_n[trans_id_i[i]].sbe.result = wbdata_i[i];
         // save the target address of a branch (needed for debug in commit stage)
-        if (CVA6Cfg.DebugEn) begin
+        // JITDomain - also needed to restart fetch after a domain change commits
+        if (CVA6Cfg.DebugEn || mem_n[trans_id_i[i]].sbe.chg_dom) begin
           mem_n[trans_id_i[i]].sbe.bp.predict_address = resolved_branch_i.target_address;
         end
         if (mem_n[trans_id_i[i]].sbe.fu == ariane_pkg::CVXIF) begin
