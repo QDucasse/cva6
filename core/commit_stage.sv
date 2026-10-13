@@ -64,6 +64,12 @@ module commit_stage
     output logic csr_write_fflags_o,
     // JITDomain - Write the curdom CSR - CSR_REGFILE
     output logic csr_write_dom_o,
+    // JITDomain - A domain change commits this cycle (with flush_commit_o) - FRONTEND
+    output logic dom_chg_o,
+    // JITDomain - Resolved target of the committed domain change - FRONTEND
+    output logic [CVA6Cfg.VLEN-1:0] dom_target_pc_o,
+    // JITDomain - Domain of that target - FRONTEND
+    output riscv::dmp_domain_t dom_target_dom_o,
     // Exception or interrupt occurred in CSR stage (the same as commit) - CSR_REGFILE
     input exception_t csr_exception_i,
     // Commit the pending store - EX_STAGE
@@ -166,6 +172,9 @@ module commit_stage
     hfence_gvma_o = 1'b0;
     csr_write_fflags_o = 1'b0;
     csr_write_dom_o = 1'b0;
+    dom_chg_o = 1'b0;
+    dom_target_pc_o = commit_instr_i[0].bp.predict_address;
+    dom_target_dom_o = commit_instr_i[0].target_dom;
     flush_commit_o = 1'b0;
 
     // we do not commit the instruction yet if we requested a halt
@@ -320,7 +329,10 @@ module commit_stage
         if (commit_instr_i[0].chg_dom) begin
           // write the CSR with new domain
           csr_wdata_o = {{CVA6Cfg.XLEN - 2{1'b0}}, commit_instr_i[0].target_dom};
-          // flush_commit_o  = 1'b1; // flush the pipeline
+          // flush the pipeline: instructions behind us were decoded with the old curdom.
+          // The frontend restarts at the resolved jump target (not pc+4), see dom_target_pc_o.
+          flush_commit_o = 1'b1;
+          dom_chg_o = 1'b1;
           csr_write_dom_o = 1'b1;
           commit_ack_o[0] = 1'b1;
         end
@@ -378,7 +390,10 @@ module commit_stage
             if (commit_instr_i[1].chg_dom) begin
               // write the CSR with new domain
               csr_wdata_o = {{CVA6Cfg.XLEN - 2{1'b0}}, commit_instr_i[1].target_dom};
-              // flush_commit_o  = 1'b1; // flush the pipeline
+              flush_commit_o = 1'b1;
+              dom_chg_o = 1'b1;
+              dom_target_pc_o = commit_instr_i[1].bp.predict_address;
+              dom_target_dom_o = commit_instr_i[1].target_dom;
               csr_write_dom_o = 1'b1;
               commit_ack_o[1] = 1'b1;
             end

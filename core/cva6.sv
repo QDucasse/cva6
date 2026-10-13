@@ -620,6 +620,9 @@ module cva6
   // JITDomain
   riscv::dmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] dmpcfg;
   logic csr_write_dom_commit_cs;
+  logic dom_chg_commit_pcgen;
+  logic [CVA6Cfg.VLEN-1:0] dom_target_pc_commit_pcgen;
+  riscv::dmp_domain_t dom_target_dom_commit_pcgen;
   riscv::dmp_domain_t curdom;
   logic [31:0] mcountinhibit_csr_perf;
   //jvt
@@ -746,7 +749,10 @@ module cva6
       .fetch_entry_o      (fetch_entry_if_id),
       .fetch_entry_valid_o(fetch_valid_if_id),
       .fetch_entry_ready_i(fetch_ready_id_if),
-      .curdom_i           (curdom)
+      .curdom_i           (curdom),
+      .dom_chg_i          (dom_chg_commit_pcgen),
+      .dom_target_pc_i    (dom_target_pc_commit_pcgen),
+      .dom_target_dom_i   (dom_target_dom_commit_pcgen)
   );
 
   // ---------
@@ -1197,6 +1203,9 @@ module cva6
       .csr_rdata_i                        (csr_rdata_csr_commit),
       .csr_write_fflags_o                 (csr_write_fflags_commit_cs),
       .csr_write_dom_o                    (csr_write_dom_commit_cs),
+      .dom_chg_o                          (dom_chg_commit_pcgen),
+      .dom_target_pc_o                    (dom_target_pc_commit_pcgen),
+      .dom_target_dom_o                   (dom_target_dom_commit_pcgen),
       .csr_exception_i                    (csr_exception_csr_commit),
       .commit_lsu_o                       (lsu_commit_commit_ex),
       .commit_lsu_ready_i                 (lsu_commit_ready_ex_commit),
