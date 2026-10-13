@@ -33,7 +33,8 @@ readonly cpu_on="rv64,h=true,sstc=true,xcvhtime=true"
 readonly cpu_off="rv64,h=true,sstc=false,xcvhtime=false"
 
 readonly tests_on=(time_mtime time_counteren time_vs htime_csrs htime_hide_routes
-                   htime_hide_hs_ctl htime_hide_view sstc sstc_irq hvti)
+                   htime_hide_hs_ctl htime_hide_view sstc sstc_irq hvti
+                   htime_introspect)
 readonly tests_off=(time_off)
 
 mkdir -p "${work}"
