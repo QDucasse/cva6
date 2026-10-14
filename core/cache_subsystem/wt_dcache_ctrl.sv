@@ -26,6 +26,7 @@ module wt_dcache_ctrl
     input logic clk_i,  // Clock
     input logic rst_ni,  // Asynchronous reset active low
     input logic cache_en_i,
+    input logic freeze_i,  // hidden freeze: misses are non-cacheable
     // core request ports
     input dcache_req_i_t req_port_i,
     output dcache_req_o_t req_port_o,
@@ -102,8 +103,9 @@ module wt_dcache_ctrl
   assign miss_paddr_o = {address_tag_q, address_idx_q, address_off_q};
   assign miss_size_o = (miss_nc_o) ? {1'b0, data_size_q} : 3'b111;
 
-  // noncacheable if request goes to I/O space, or if cache is disabled
-  assign miss_nc_o = (~cache_en_i) | (~config_pkg::is_inside_cacheable_regions(
+  // noncacheable if request goes to I/O space, or if cache is disabled, or while frozen (the miss
+  // unit latches it with the miss, so a frozen miss never fills)
+  assign miss_nc_o = (~cache_en_i) | freeze_i | (~config_pkg::is_inside_cacheable_regions(
       CVA6Cfg,
       {{{64-CVA6Cfg.DCACHE_TAG_WIDTH-CVA6Cfg.DCACHE_INDEX_WIDTH}{1'b0}}, address_tag_q, {CVA6Cfg.DCACHE_INDEX_WIDTH{1'b0}}}
   ));

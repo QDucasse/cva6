@@ -32,6 +32,7 @@ module wt_dcache
 
     // Cache management
     input logic enable_i,  // from CSR
+    input logic freeze_i,  // hidden freeze: misses are non-cacheable, from CSR
     input logic flush_i,  // high until acknowledged
     output logic flush_ack_o,  // send a single cycle acknowledge signal when the cache is flushed
     output logic miss_o,  // we missed on a ld/st
@@ -118,6 +119,19 @@ module wt_dcache
   logic     [      CVA6Cfg.DCACHE_SET_ASSOC-1:0]                                  rd_vld_bits;
   logic     [      CVA6Cfg.DCACHE_SET_ASSOC-1:0]                                  rd_hit_oh;
 
+  // write buffer read port, shared with the frozen AMO lookup
+  logic                                                                           wbuffer_rd_req;
+  logic                                                                           wbuffer_rd_ack;
+  logic                                                                           wbuffer_rd_tag_only;
+  logic     [      CVA6Cfg.DCACHE_TAG_WIDTH-1:0]                                  wbuffer_rd_tag;
+  logic     [           DCACHE_CL_IDX_WIDTH-1:0]                                  wbuffer_rd_idx;
+  logic     [   CVA6Cfg.DCACHE_OFFSET_WIDTH-1:0]                                  wbuffer_rd_off;
+  logic                                                                           amo_rd_sel;
+  logic                                                                           amo_rd_req;
+  logic                                                                           amo_rd_ack;
+  logic     [      CVA6Cfg.DCACHE_TAG_WIDTH-1:0]                                  amo_rd_tag;
+  logic     [           DCACHE_CL_IDX_WIDTH-1:0]                                  amo_rd_idx;
+
   // miss unit <-> wbuffer
   logic     [         CVA6Cfg.DCACHE_MAX_TX-1:0][               CVA6Cfg.PLEN-1:0] tx_paddr;
   logic     [         CVA6Cfg.DCACHE_MAX_TX-1:0]                                  tx_vld;
@@ -141,6 +155,7 @@ module wt_dcache
       .clk_i          (clk_i),
       .rst_ni         (rst_ni),
       .enable_i       (enable_i),
+      .freeze_i       (freeze_i),
       .flush_i        (flush_i),
       .flush_ack_o    (flush_ack_o),
       .miss_o         (miss_o),
@@ -183,7 +198,14 @@ module wt_dcache
       .mem_rtrn_i     (mem_rtrn_i),
       .mem_data_req_o (mem_data_req_o),
       .mem_data_ack_i (mem_data_ack_i),
-      .mem_data_o     (mem_data_o)
+      .mem_data_o     (mem_data_o),
+      // frozen AMO lookup
+      .amo_rd_sel_o   (amo_rd_sel),
+      .amo_rd_req_o   (amo_rd_req),
+      .amo_rd_tag_o   (amo_rd_tag),
+      .amo_rd_idx_o   (amo_rd_idx),
+      .amo_rd_ack_i   (amo_rd_ack),
+      .amo_rd_hit_oh_i(rd_hit_oh)
   );
 
   ///////////////////////////////////////////////////////
@@ -205,6 +227,7 @@ module wt_dcache
           .clk_i          (clk_i),
           .rst_ni         (rst_ni),
           .cache_en_i     (cache_en),
+          .freeze_i       (freeze_i),
           // reqs from core
           .req_port_i     (req_ports_i[k]),
           .req_port_o     (req_ports_o[k]),
@@ -293,12 +316,12 @@ module wt_dcache
       .miss_rtrn_vld_i(miss_rtrn_vld[NumPorts-1]),
       .miss_rtrn_id_i (miss_rtrn_id),
       // cache read interface
-      .rd_tag_o       (rd_tag[NumPorts-1]),
-      .rd_idx_o       (rd_idx[NumPorts-1]),
-      .rd_off_o       (rd_off[NumPorts-1]),
-      .rd_req_o       (rd_req[NumPorts-1]),
-      .rd_tag_only_o  (rd_tag_only[NumPorts-1]),
-      .rd_ack_i       (rd_ack[NumPorts-1]),
+      .rd_tag_o       (wbuffer_rd_tag),
+      .rd_idx_o       (wbuffer_rd_idx),
+      .rd_off_o       (wbuffer_rd_off),
+      .rd_req_o       (wbuffer_rd_req),
+      .rd_tag_only_o  (wbuffer_rd_tag_only),
+      .rd_ack_i       (wbuffer_rd_ack),
       .rd_data_i      (rd_data),
       .rd_vld_bits_i  (rd_vld_bits),
       .rd_hit_oh_i    (rd_hit_oh),
@@ -318,6 +341,16 @@ module wt_dcache
       .tx_paddr_o     (tx_paddr),
       .tx_vld_o       (tx_vld)
   );
+
+  // Hidden freeze: a frozen AMO borrows the write buffer's read port for a tag-only lookup. The
+  // write buffer is empty when an AMO starts, and waits for its ack if it gets a new store.
+  assign rd_tag[NumPorts-1]      = (amo_rd_sel) ? amo_rd_tag : wbuffer_rd_tag;
+  assign rd_idx[NumPorts-1]      = (amo_rd_sel) ? amo_rd_idx : wbuffer_rd_idx;
+  assign rd_off[NumPorts-1]      = (amo_rd_sel) ? '0 : wbuffer_rd_off;
+  assign rd_req[NumPorts-1]      = (amo_rd_sel) ? amo_rd_req : wbuffer_rd_req;
+  assign rd_tag_only[NumPorts-1] = (amo_rd_sel) ? 1'b1 : wbuffer_rd_tag_only;
+  assign wbuffer_rd_ack          = rd_ack[NumPorts-1] & ~amo_rd_sel;
+  assign amo_rd_ack              = rd_ack[NumPorts-1] & amo_rd_sel;
 
   ///////////////////////////////////////////////////////
   // memory arrays, arbitration and tag comparison

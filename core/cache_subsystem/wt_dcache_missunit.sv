@@ -29,6 +29,7 @@ module wt_dcache_missunit
     input logic rst_ni,  // Asynchronous reset active low
     // cache management, signals from/to core
     input logic enable_i,  // from CSR
+    input logic freeze_i,  // hidden freeze: replacement state stopped, from CSR
     input  logic                                       flush_i,     // flush request, this waits for pending tx (write, read) to finish and will clear the cache
     output logic flush_ack_o,  // send a single cycle acknowledge signal when the cache is flushed
     output logic miss_o,  // we missed on a ld/st
@@ -74,7 +75,14 @@ module wt_dcache_missunit
     input dcache_rtrn_t mem_rtrn_i,
     output logic mem_data_req_o,
     input logic mem_data_ack_i,
-    output dcache_req_t mem_data_o
+    output dcache_req_t mem_data_o,
+    // hidden freeze: tag-only lookup before a frozen AMO, on the write buffer's read port
+    output logic amo_rd_sel_o,  // the miss unit owns the port
+    output logic amo_rd_req_o,
+    output logic [CVA6Cfg.DCACHE_TAG_WIDTH-1:0] amo_rd_tag_o,
+    output logic [DCACHE_CL_IDX_WIDTH-1:0] amo_rd_idx_o,
+    input logic amo_rd_ack_i,
+    input logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] amo_rd_hit_oh_i
 );
 
   // functions
@@ -107,14 +115,16 @@ module wt_dcache_missunit
   endfunction : paddrSizeAlign
 
   // controller FSM
-  typedef enum logic [2:0] {
+  typedef enum logic [3:0] {
     IDLE,
     DRAIN,
     AMO,
     FLUSH,
     STORE_WAIT,
     LOAD_WAIT,
-    AMO_WAIT
+    AMO_WAIT,
+    AMO_LOOKUP,
+    AMO_LOOKUP_WAIT
   } state_e;
   state_e state_d, state_q;
 
@@ -141,6 +151,9 @@ module wt_dcache_missunit
   logic mask_reads, lock_reqs;
   logic amo_sel, miss_is_write;
   logic amo_req_d, amo_req_q;
+  // hidden freeze: the AMO started frozen, and the ways its line hits in
+  logic amo_frz_d, amo_frz_q;
+  logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] amo_hit_d, amo_hit_q;
   logic [63:0] amo_rtrn_mux;
   logic [CVA6Cfg.XLEN-1:0] amo_data, amo_data_a, amo_data_b;
   logic [CVA6Cfg.XLEN-1:0] amo_user;  //DCACHE USER ? CVA6Cfg.DCACHE_USER_WIDTH
@@ -416,6 +429,11 @@ module wt_dcache_missunit
   // to write buffer
   assign miss_rtrn_id_o = mem_rtrn_i.tid;
 
+  // frozen AMO lookup (the tag is compared in the cycle after the ack, so keep the port then)
+  assign amo_rd_sel_o = CVA6Cfg.RVA && (state_q == AMO_LOOKUP || state_q == AMO_LOOKUP_WAIT);
+  assign amo_rd_tag_o = amo_req_i.operand_a[CVA6Cfg.DCACHE_TAG_WIDTH+CVA6Cfg.DCACHE_INDEX_WIDTH-1:CVA6Cfg.DCACHE_INDEX_WIDTH];
+  assign amo_rd_idx_o = amo_req_i.operand_a[CVA6Cfg.DCACHE_INDEX_WIDTH-1:CVA6Cfg.DCACHE_OFFSET_WIDTH];
+
   ///////////////////////////////////////////////////////
   // writes to cache memory
   ///////////////////////////////////////////////////////
@@ -424,7 +442,11 @@ module wt_dcache_missunit
   assign wr_cl_nc_o = mshr_q.nc;
   assign wr_cl_vld_o = load_ack | (|wr_cl_we_o);
 
-  assign wr_cl_we_o = (flush_en) ? '1 : (inv_vld_all) ? '1 : (inv_vld) ? dcache_way_bin2oh(
+  // A frozen AMO invalidates only the way its line hits in, instead of the whole set (the adapter
+  // answers every AMO with inv.all). The tags can't change in between: the write buffer and the
+  // MSHR are drained before an AMO. A frozen LR doesn't change memory and invalidates nothing.
+  assign wr_cl_we_o = (flush_en) ? '1 : (inv_vld_all && amo_frz_q) ? amo_hit_q :
+                      (inv_vld_all) ? '1 : (inv_vld) ? dcache_way_bin2oh(
       mem_rtrn_i.inv.way
   ) : (cl_write_en) ? dcache_way_bin2oh(
       mshr_q.repl_way
@@ -470,6 +492,9 @@ module wt_dcache_missunit
     mshr_allocate    = 1'b0;
     lock_reqs        = 1'b0;
     mask_reads       = mshr_vld_q;
+    amo_frz_d        = amo_frz_q;
+    amo_hit_d        = amo_hit_q;
+    amo_rd_req_o     = 1'b0;
 
     // interfaces
     unique case (state_q)
@@ -485,7 +510,8 @@ module wt_dcache_missunit
           end
         end else if (CVA6Cfg.RVA && amo_req_i.req) begin
           if (wbuffer_empty_i && !mshr_vld_q) begin
-            state_d = AMO;
+            state_d   = (freeze_i) ? AMO_LOOKUP : AMO;
+            amo_frz_d = freeze_i;
           end else begin
             state_d = DRAIN;
           end
@@ -512,7 +538,7 @@ module wt_dcache_missunit
             end else if (!tx_rdwr_collision) begin
               mem_data_req_o   = 1'b1;
               mem_data_o.rtype = DCACHE_LOAD_REQ;
-              update_lfsr      = all_ways_valid & mem_data_ack_i;  // need to evict a random way
+              update_lfsr      = all_ways_valid & mem_data_ack_i & ~freeze_i;  // need to evict a random way
               mshr_allocate    = mem_data_ack_i;
               if (!mem_data_ack_i) begin
                 state_d = LOAD_WAIT;
@@ -538,7 +564,7 @@ module wt_dcache_missunit
         mem_data_req_o   = 1'b1;
         mem_data_o.rtype = DCACHE_LOAD_REQ;
         if (mem_data_ack_i) begin
-          update_lfsr   = all_ways_valid;  // need to evict a random way
+          update_lfsr   = all_ways_valid & ~freeze_i;  // need to evict a random way
           mshr_allocate = 1'b1;
           state_d       = IDLE;
         end
@@ -556,6 +582,22 @@ module wt_dcache_missunit
 
         if (wbuffer_empty_i && !mshr_vld_q) begin
           state_d = IDLE;
+        end
+      end
+      //////////////////////////////////
+      // frozen AMO: tag-only lookup of its line
+      AMO_LOOKUP: begin
+        if (CVA6Cfg.RVA) begin
+          amo_rd_req_o = 1'b1;
+          if (amo_rd_ack_i) begin
+            state_d = AMO_LOOKUP_WAIT;
+          end
+        end
+      end
+      AMO_LOOKUP_WAIT: begin
+        if (CVA6Cfg.RVA) begin
+          amo_hit_d = (amo_req_i.amo_op == AMO_LR) ? '0 : amo_rd_hit_oh_i;
+          state_d   = AMO;
         end
       end
       //////////////////////////////////
@@ -592,6 +634,7 @@ module wt_dcache_missunit
           amo_sel = 1'b1;
           if (amo_ack) begin
             amo_resp_o.ack = 1'b1;
+            amo_frz_d      = 1'b0;
             state_d        = IDLE;
           end
         end
@@ -620,6 +663,8 @@ module wt_dcache_missunit
       mshr_rdrd_collision_q <= '0;
       miss_req_masked_q     <= '0;
       amo_req_q             <= '0;
+      amo_frz_q             <= '0;
+      amo_hit_q             <= '0;
       stores_inflight_q     <= '0;
     end else begin
       state_q               <= state_d;
@@ -632,6 +677,8 @@ module wt_dcache_missunit
       mshr_rdrd_collision_q <= mshr_rdrd_collision_d;
       miss_req_masked_q     <= miss_req_masked_d;
       amo_req_q             <= amo_req_d;
+      amo_frz_q             <= amo_frz_d;
+      amo_hit_q             <= amo_hit_d;
       stores_inflight_q     <= stores_inflight_d;
     end
   end

@@ -38,6 +38,8 @@ module wt_cache_subsystem
 ) (
     input logic clk_i,
     input logic rst_ni,
+    // Hidden freeze (RVHiddenFreeze): caches serve hits but don't allocate - CSR_REGFILE
+    input logic freeze_i,
     // I$
     input logic icache_en_i,  // enable icache (or bypass e.g: in debug mode)
     input logic icache_flush_i,  // flush the icache, flush and kill have to be asserted together
@@ -158,6 +160,7 @@ module wt_cache_subsystem
       .clk_i           (clk_i),
       .rst_ni          (rst_ni),
       .enable_i        (dcache_enable_i),
+      .freeze_i        (freeze_i),
       .flush_i         (dcache_flush_i),
       .flush_ack_o     (dcache_flush_ack_o),
       .miss_o          (dcache_miss_o),
