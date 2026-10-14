@@ -46,6 +46,8 @@ module cva6_icache
     input  logic         flush_i,
     /// enable icache
     input  logic         en_i,
+    // Hidden freeze: misses are non-cacheable - CSR_REGFILE
+    input  logic         freeze_i,
     /// to performance counter
     output logic         miss_o,
     // address translation requests
@@ -79,6 +81,7 @@ module cva6_icache
   logic cache_en_d, cache_en_q;  // cache is enabled
   logic [CVA6Cfg.VLEN-1:0] vaddr_d, vaddr_q;
   logic paddr_is_nc;  // asserted if physical address is non-cacheable
+  logic nc_d, nc_q;  // non-cacheable bit of the outstanding miss, latched when it is sent
   logic [CVA6Cfg.ICACHE_SET_ASSOC-1:0] cl_hit;  // hit from tag compare
   logic cache_rden;  // triggers cache lookup
   logic cache_wren;  // triggers write to cacheline
@@ -136,8 +139,8 @@ module cva6_icache
   // extract tag from physical address, check if NC
   assign cl_tag_d  = (areq_i.fetch_valid) ? areq_i.fetch_paddr[CVA6Cfg.ICACHE_TAG_WIDTH+CVA6Cfg.ICACHE_INDEX_WIDTH-1:CVA6Cfg.ICACHE_INDEX_WIDTH] : cl_tag_q;
 
-  // noncacheable if request goes to I/O space, or if cache is disabled
-  assign paddr_is_nc = (~cache_en_q) | (~config_pkg::is_inside_cacheable_regions(
+  // noncacheable if request goes to I/O space, or if cache is disabled, or while frozen
+  assign paddr_is_nc = (~cache_en_q) | freeze_i | (~config_pkg::is_inside_cacheable_regions(
       CVA6Cfg, {{64 - CVA6Cfg.PLEN{1'b0}}, cl_tag_d, {CVA6Cfg.ICACHE_INDEX_WIDTH{1'b0}}}
   ));
 
@@ -199,6 +202,7 @@ module cva6_icache
     cache_wren = 1'b0;
     inv_en = 1'b0;
     flush_d = flush_q | flush_i;  // register incoming flush
+    nc_d = nc_q;
 
     // interfaces
     dreq_o.ready = 1'b0;
@@ -301,6 +305,7 @@ module cva6_icache
             mem_data_req_o = 1'b1;
             if (mem_data_ack_i) begin
               miss_o  = ~paddr_is_nc;
+              nc_d    = paddr_is_nc;
               state_d = MISS;
             end
           end
@@ -321,8 +326,9 @@ module cva6_icache
           // only return data if request is not being killed
           if (!(dreq_i.kill_s2 || flush_d)) begin
             dreq_o.valid = 1'b1;
-            // only write to cache if this address is cacheable
-            cache_wren   = ~paddr_is_nc;
+            // only write to cache if this address was cacheable when the miss was sent
+            // (the freeze may have started or ended since)
+            cache_wren   = ~nc_q;
           end
           // bail out if this request is being killed
         end else if (dreq_i.kill_s2 || flush_d) begin
@@ -516,6 +522,7 @@ module cva6_icache
       cl_offset_q   <= '0;
       repl_way_oh_q <= '0;
       inv_q         <= '0;
+      nc_q          <= '0;
     end else begin
       cl_tag_q      <= cl_tag_d;
       flush_cnt_q   <= flush_cnt_d;
@@ -527,6 +534,7 @@ module cva6_icache
       cl_offset_q   <= cl_offset_d;
       repl_way_oh_q <= repl_way_oh_d;
       inv_q         <= inv_d;
+      nc_q          <= nc_d;
     end
   end
 
