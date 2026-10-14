@@ -63,6 +63,7 @@ localparam config_pkg::cva6_user_cfg_t cva6_cfg = '{
    RVZiCbom: bit'(1),
    RVZihpm: bit'(1),
    RVHiddenTime: bit'(0),
+   RVHiddenFreeze: bit'(0),
    NrScoreboardEntries: unsigned'(8),
    PerfCounterEn: bit'(1),
    MmuPresent: bit'(1),

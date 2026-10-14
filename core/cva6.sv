@@ -650,6 +650,8 @@ module cva6
   // --------------
   logic set_pc_ctrl_pcgen;
   logic flush_csr_ctrl;
+  // Hidden freeze (RVHiddenFreeze): caches, TLBs and predictors frozen during a VM exit
+  logic freeze_csr;
   logic flush_unissued_instr_ctrl_id;
   logic flush_ctrl_if;
   logic flush_ctrl_id;
@@ -1228,6 +1230,7 @@ module cva6
       .rst_ni,
       .time_irq_i,
       .time_i,
+      .freeze_o                           (freeze_csr),
       .flush_o                            (flush_csr_ctrl),
       .halt_csr_o                         (halt_csr_ctrl),
       .commit_instr_i                     (commit_instr_id_commit[0]),

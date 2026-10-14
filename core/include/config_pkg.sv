@@ -92,6 +92,8 @@ package config_pkg;
     bit                          RVZihpm;
     // Hidden-time extension (hardware time CSR, hides VM-exit time from guests)
     bit                          RVHiddenTime;
+    // Hidden freeze (caches, TLBs and predictors frozen during a VM exit), requires RVHiddenTime
+    bit                          RVHiddenFreeze;
     // Floating Point
     bit                          RVF;
     // Floating Point
@@ -335,6 +337,7 @@ package config_pkg;
     bit          RVZicntr;
     bit          RVZihpm;
     bit          RVHiddenTime;
+    bit          RVHiddenFreeze;
 
     int unsigned NR_SB_ENTRIES;
     int unsigned TRANS_ID_BITS;
@@ -494,6 +497,11 @@ package config_pkg;
     // opcode collisions.
     if (Cfg.RVZCMP && Cfg.RVC && Cfg.RVD) begin
       $fatal(1, "[config] RVZCMP (Zcmp) and RVC+RVD (Zcd = C+D) are mutually exclusive");
+    end
+    // The hidden freeze lives in htimectl and is only implemented for the write-through data cache
+    // without a shared TLB
+    if (Cfg.RVHiddenFreeze && !(Cfg.RVHiddenTime && Cfg.DCacheType == WT && !Cfg.UseSharedTlb)) begin
+      $fatal(1, "[config] RVHiddenFreeze requires RVHiddenTime, a WT dcache and no shared TLB");
     end
     // pragma translate_on
   endfunction

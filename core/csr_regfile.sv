@@ -34,6 +34,8 @@ module csr_regfile
     input logic time_irq_i,
     // Platform mtime value - SUBSYSTEM
     input logic [63:0] time_i,
+    // Hidden freeze: caches, TLBs and predictors frozen (RVHiddenFreeze) - FRONTEND, CACHES, MMU
+    output logic freeze_o,
     // send a flush request out when a CSR with a side effect changes - CONTROLLER
     output logic flush_o,
     // halt requested - CONTROLLER
@@ -320,8 +322,15 @@ module csr_regfile
   logic [CVA6Cfg.XLEN-1:0] hideleg_q, hideleg_d;
   logic [CVA6Cfg.XLEN-1:0] hcounteren_q, hcounteren_d;
   logic [63:0] htimedelta_q, htimedelta_d;
-  // hidden-time extension: htimectl holds HHAE (bit 0) only
+  // hidden-time extension: htimectl holds HHAE (bit 0) and HFRZ (bit 1, RVHiddenFreeze)
   logic htimectl_hhae_q, htimectl_hhae_d;
+  localparam bit FreezeEn = CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.RVHiddenFreeze &&
+      CVA6Cfg.IS_XLEN64;
+  logic htimectl_hfrz_q, htimectl_hfrz_d;
+  // frozen: set when a trap commits with V 1->0 and HFRZ=1, cleared when an xRET commits with
+  // V 0->1 or when HFRZ is written 0
+  logic frozen_q, frozen_d;
+  logic freeze_start;
   logic [63:0] hexit_time_q, hexit_time_d;
   logic [63:0] hhidden_time_q, hhidden_time_d;
   logic [63:0] hvtimecmp_q, hvtimecmp_d;
@@ -650,7 +659,7 @@ module csr_regfile
         else read_access_exception = 1'b1;
         riscv::CSR_HTIMECTL:
         if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64)
-          csr_rdata = {{CVA6Cfg.XLEN - 1{1'b0}}, htimectl_hhae_q};
+          csr_rdata = {{CVA6Cfg.XLEN - 2{1'b0}}, FreezeEn & htimectl_hfrz_q, htimectl_hhae_q};
         else read_access_exception = 1'b1;
         riscv::CSR_HEXIT_TIME:
         if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) csr_rdata = hexit_time_q[CVA6Cfg.XLEN-1:0];
@@ -1214,6 +1223,7 @@ module csr_regfile
       hcounteren_d             = hcounteren_q;
       htimedelta_d             = htimedelta_q;
       htimectl_hhae_d          = htimectl_hhae_q;
+      htimectl_hfrz_d          = htimectl_hfrz_q;
       hexit_time_d             = hexit_time_q;
       hhidden_time_d           = hhidden_time_q;
       hvtimecmp_d              = hvtimecmp_q;
@@ -1655,6 +1665,7 @@ module csr_regfile
         riscv::CSR_HTIMECTL: begin
           if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) begin
             htimectl_hhae_d = csr_wdata[0];
+            if (FreezeEn) htimectl_hfrz_d = csr_wdata[1];
           end else begin
             update_access_exception = 1'b1;
           end
@@ -2722,6 +2733,23 @@ module csr_regfile
                                     & ((mstatus_q.mie & (priv_lvl_o == riscv::PRIV_LVL_M))
                                     | (CVA6Cfg.RVU & priv_lvl_o != riscv::PRIV_LVL_M));
 
+  // Hidden freeze. freeze_o is also on in the cycle the freezing trap commits, so the trap's own
+  // flush and the handler's first fetch are already frozen, and in the cycle the xRET commits.
+  if (FreezeEn) begin : gen_freeze
+    assign freeze_start = ex_i.valid && v_q && !v_d && htimectl_hfrz_q;
+    always_comb begin
+      frozen_d = frozen_q;
+      if (freeze_start) frozen_d = 1'b1;
+      if (eret_o && !v_q && v_d) frozen_d = 1'b0;
+      if (!htimectl_hfrz_d) frozen_d = 1'b0;
+    end
+    assign freeze_o = frozen_q || freeze_start;
+  end else begin : gen_no_freeze
+    assign freeze_start = 1'b0;
+    assign frozen_d     = 1'b0;
+    assign freeze_o     = 1'b0;
+  end
+
   assign time_rdata = (CVA6Cfg.RVH && v_q) ? time_i + htimedelta_q - hhidden_time_q : time_i;
   assign cycle_rdata = (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64 && v_q) ?
       cycle_q - hhidden_cycle_q : cycle_q;
@@ -3136,6 +3164,8 @@ module csr_regfile
         hcounteren_q             <= {CVA6Cfg.XLEN{1'b0}};
         htimedelta_q             <= 64'b0;
         htimectl_hhae_q          <= 1'b0;
+        htimectl_hfrz_q          <= 1'b0;
+        frozen_q                 <= 1'b0;
         hexit_time_q             <= 64'b0;
         hhidden_time_q           <= 64'b0;
         hvtimecmp_q              <= 64'b0;
@@ -3250,6 +3280,8 @@ module csr_regfile
         hcounteren_q             <= hcounteren_d;
         htimedelta_q             <= htimedelta_d;
         htimectl_hhae_q          <= htimectl_hhae_d;
+        htimectl_hfrz_q          <= htimectl_hfrz_d;
+        frozen_q                 <= frozen_d;
         hexit_time_q             <= hexit_time_d;
         hhidden_time_q           <= hhidden_time_d;
         hvtimecmp_q              <= hvtimecmp_d;

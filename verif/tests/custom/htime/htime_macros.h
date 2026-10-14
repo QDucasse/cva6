@@ -52,6 +52,14 @@
 #define CSR_HHIDDEN_INSTRET_NUM 0x6c7
 
 #define HTIMECTL_HHAE   (1 << 0)
+#define HTIMECTL_HFRZ   (1 << 1)
+// Writable htimectl bits: the htime config has RVHiddenFreeze; the QEMU model doesn't store
+// HFRZ yet
+#ifdef HTIME_QEMU
+#define HTIMECTL_WMASK  HTIMECTL_HHAE
+#else
+#define HTIMECTL_WMASK  (HTIMECTL_HHAE | HTIMECTL_HFRZ)
+#endif
 
 // Sstc
 #define CSR_STIMECMP_NUM    0x14d

@@ -55,6 +55,7 @@ package cva6_config_pkg;
       RVZicntr: bit'(0),
       RVZihpm: bit'(0),
       RVHiddenTime: bit'(0),
+      RVHiddenFreeze: bit'(0),
       NrScoreboardEntries: unsigned'(4),
       PerfCounterEn: bit'(0),
       MmuPresent: bit'(0),
