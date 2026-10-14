@@ -144,6 +144,8 @@ module load_store_unit
     input  logic                                      flush_tlb_i,
     input  logic                                      flush_tlb_vvma_i,
     input  logic                                      flush_tlb_gvma_i,
+    // Hidden freeze: TLBs don't install or move their PLRU - CSR_REGFILE
+    input  logic                                      freeze_i,
     // Instruction TLB miss - PERF_COUNTERS
     output logic                                      itlb_miss_o,
     // Data TLB miss - PERF_COUNTERS
@@ -330,6 +332,7 @@ module load_store_unit
         .flush_tlb_i,
         .flush_tlb_vvma_i,
         .flush_tlb_gvma_i,
+        .freeze_i,
 
         .itlb_miss_o(itlb_miss_o),
         .dtlb_miss_o(dtlb_miss_o),

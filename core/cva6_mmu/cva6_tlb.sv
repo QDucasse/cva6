@@ -35,6 +35,7 @@ module cva6_tlb
     input logic flush_i,  // Flush normal translations signal
     input logic flush_vvma_i,  // Flush VS stage signal
     input logic flush_gvma_i,  // Flush G stage signal
+    input logic freeze_i,  // Hidden freeze: no install, PLRU stopped, walk results in the bypass
     input logic s_st_enbl_i,  // S-stage enabled
     input logic g_st_enbl_i,  // G-stage enabled
     input logic v_i,  // virtualization mode
@@ -55,6 +56,14 @@ module cva6_tlb
     output logic [CVA6Cfg.PtLevels-2:0] lu_is_page_o,
     output logic lu_hit_o
 );
+  // Hidden freeze: one extra entry, the bypass, holds the walk result while frozen (the array
+  // isn't written then, and without it a retried access would miss and walk again forever).
+  // Only looked up while frozen, emptied when not frozen, flushed like any other entry, never
+  // chosen by the PLRU.
+  localparam bit HasBypass = CVA6Cfg.RVHiddenFreeze;
+  localparam int unsigned NumEntries = TLB_ENTRIES + HasBypass;
+  localparam int unsigned Bypass = TLB_ENTRIES;
+
   // SV39 defines three levels of page tables
   struct packed {
     logic [CVA6Cfg.ASID_WIDTH-1:0] asid;
@@ -69,34 +78,34 @@ module cva6_tlb
     logic [HYP_EXT*2:0] v_st_enbl;  // v_i, g-stage enabled, s-stage enabled
     logic valid;
     logic is_napot_64k;  // Svnapot: Flag indicating a 64KiB NAPOT page
-  } [TLB_ENTRIES-1:0]
+  } [NumEntries-1:0]
       tags_q, tags_n;
 
   struct packed {
     pte_cva6_t pte;   // S or VS-stage Page Table Entry structure
     pte_cva6_t gpte;  // G-stage Page Table Entry structure
-  } [TLB_ENTRIES-1:0]
+  } [NumEntries-1:0]
       content_q, content_n;
 
-  logic [TLB_ENTRIES-1:0][CVA6Cfg.PtLevels-1:0] vpn_match;
-  logic [TLB_ENTRIES-1:0][CVA6Cfg.PtLevels-1:0] level_match;
-  logic [TLB_ENTRIES-1:0][HYP_EXT:0][CVA6Cfg.PtLevels-1:0] vaddr_vpn_match;
-  logic [TLB_ENTRIES-1:0][HYP_EXT:0][CVA6Cfg.PtLevels-1:0] vaddr_level_match;
-  logic [TLB_ENTRIES-1:0] lu_hit;  // to replacement logic
-  logic [TLB_ENTRIES-1:0] replace_en;  // replace the following entry, set by replacement strategy
-  logic [TLB_ENTRIES-1:0] match_asid;
-  logic [TLB_ENTRIES-1:0] match_vmid;
-  logic [TLB_ENTRIES-1:0][CVA6Cfg.PtLevels-1:0] page_match;
-  logic [TLB_ENTRIES-1:0][HYP_EXT:0][CVA6Cfg.PtLevels-1:0] vpage_match;
-  logic [TLB_ENTRIES-1:0][CVA6Cfg.PtLevels-2:0] is_page_o;
-  logic [TLB_ENTRIES-1:0] match_stage;
+  logic [NumEntries-1:0][CVA6Cfg.PtLevels-1:0] vpn_match;
+  logic [NumEntries-1:0][CVA6Cfg.PtLevels-1:0] level_match;
+  logic [NumEntries-1:0][HYP_EXT:0][CVA6Cfg.PtLevels-1:0] vaddr_vpn_match;
+  logic [NumEntries-1:0][HYP_EXT:0][CVA6Cfg.PtLevels-1:0] vaddr_level_match;
+  logic [NumEntries-1:0] lu_hit;  // to replacement logic
+  logic [NumEntries-1:0] replace_en;  // replace the following entry, set by replacement strategy
+  logic [NumEntries-1:0] match_asid;
+  logic [NumEntries-1:0] match_vmid;
+  logic [NumEntries-1:0][CVA6Cfg.PtLevels-1:0] page_match;
+  logic [NumEntries-1:0][HYP_EXT:0][CVA6Cfg.PtLevels-1:0] vpage_match;
+  logic [NumEntries-1:0][CVA6Cfg.PtLevels-2:0] is_page_o;
+  logic [NumEntries-1:0] match_stage;
   pte_cva6_t g_content;
-  logic [TLB_ENTRIES-1:0][(CVA6Cfg.GPPNW-1):0] gppn;
+  logic [NumEntries-1:0][(CVA6Cfg.GPPNW-1):0] gppn;
   logic [HYP_EXT*2:0] v_st_enbl;
 
-  logic [TLB_ENTRIES-1:0] napot_tag_match;
+  logic [NumEntries-1:0] napot_tag_match;
   pte_cva6_t patched_pte;
-  logic [TLB_ENTRIES-1:0] vpn0_napot_match;
+  logic [NumEntries-1:0] vpn0_napot_match;
   assign v_st_enbl = (CVA6Cfg.RVH) ? {v_i, g_st_enbl_i, s_st_enbl_i} : '1;
   //-------------
   // Translation
@@ -104,7 +113,7 @@ module cva6_tlb
 
   genvar i_gen, x_gen, z_gen, w_gen;
   generate
-    for (i_gen = 0; i_gen < TLB_ENTRIES; i_gen++) begin
+    for (i_gen = 0; i_gen < NumEntries; i_gen++) begin
       for (x_gen = 0; x_gen < CVA6Cfg.PtLevels; x_gen++) begin
         // WARNING: `x` goes in the order {0 = 4K, 1 = 2M, 2 = 1G}.
 
@@ -195,7 +204,7 @@ module cva6_tlb
     g_content      = '{default: 0};
     lu_gpaddr_o    = '{default: 0};
 
-    for (int unsigned i = 0; i < TLB_ENTRIES; i++) begin
+    for (int unsigned i = 0; i < NumEntries; i++) begin
       // First level match, this may be a giga page, check the ASID flags as well
       // if the entry is associated to a global address, don't match the ASID (ASID is don't care)
       match_asid[i] = ((lu_asid_i == tags_q[i].asid || content_q[i].pte.g) && s_st_enbl_i) || !s_st_enbl_i;
@@ -214,7 +223,8 @@ module cva6_tlb
       // - vmid matches
       // - virtualisations / S-stage / G-stage matches
       // - there exists a PT level for which and entry exists and corresponding VPN(s) match
-      if (tags_q[i].valid && match_asid[i] && match_vmid[i] && match_stage[i] && (|level_match[i] || napot_tag_match[i])) begin
+      if (tags_q[i].valid && match_asid[i] && match_vmid[i] && match_stage[i] && (|level_match[i] || napot_tag_match[i]) &&
+          (i != Bypass || freeze_i)) begin
         lu_is_page_o = is_page_o[i];
         lu_content_o = content_q[i].pte;
         lu_hit_o     = 1'b1;
@@ -299,7 +309,7 @@ module cva6_tlb
     tags_n    = tags_q;
     content_n = content_q;
 
-    for (int unsigned i = 0; i < TLB_ENTRIES; i++) begin
+    for (int unsigned i = 0; i < NumEntries; i++) begin
 
 
       if (CVA6Cfg.RVH) begin
@@ -374,8 +384,8 @@ module cva6_tlb
           else if ((gpaddr_to_be_flushed_is0) && (vmid_to_be_flushed_i == tags_q[i].vmid) && (!vmid_to_be_flushed_is0))
             tags_n[i].valid = 1'b0;
         end
-        // normal replacement
-      end else if (update_i.valid & replace_en[i] & !lu_hit_o) begin
+        // normal replacement (into the bypass while frozen)
+      end else if (update_i.valid & (freeze_i ? i == Bypass : replace_en[i]) & !lu_hit_o) begin
         vpn_to_store = update_i.vpn;
         if (update_i.is_napot_64k && CVA6Cfg.SvnapotEn) begin
           // Svnapot: For a NAPOT entry, normalize the VPN by clearing the lower bits before storage
@@ -398,6 +408,8 @@ module cva6_tlb
         if (CVA6Cfg.RVH) content_n[i].gpte = update_i.g_content;
       end
     end
+
+    if (HasBypass && !freeze_i) tags_n[Bypass].valid = 1'b0;
   end
 
   // -----------------------------------------------
@@ -434,7 +446,7 @@ module cva6_tlb
     ) begin
       automatic int unsigned idx_base, shift, new_index;
       // we got a hit so update the pointer as it was least recently used
-      if (lu_hit[i] & lu_access_i) begin
+      if (lu_hit[i] & lu_access_i & ~freeze_i) begin
         // Set the nodes to the values we would expect
         for (int unsigned lvl = 0; lvl < $clog2(TLB_ENTRIES); lvl++) begin
           idx_base = $unsigned((2 ** lvl) - 1);
@@ -460,6 +472,7 @@ module cva6_tlb
     // For each entry traverse the tree. If every tree-node matches,
     // the corresponding bit of the entry's index, this is
     // the next entry to replace.
+    replace_en = '0;
     for (int unsigned i = 0; i < TLB_ENTRIES; i += 1) begin
       automatic logic en;
       automatic int unsigned idx_base, shift, new_index;
