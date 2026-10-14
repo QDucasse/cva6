@@ -32,6 +32,8 @@ module frontend
     input logic [CVA6Cfg.VLEN-1:0] boot_addr_i,
     // Flush branch prediction - zero
     input logic flush_bp_i,
+    // Hidden freeze: predictors off (no lookup, update or flush) - CSR_REGFILE
+    input logic freeze_i,
     // Flush requested by FENCE, mis-predict and exception - CONTROLLER
     input logic flush_i,
     // Halt requested by WFI and Accelerate port - CONTROLLER
@@ -147,6 +149,11 @@ module frontend
   // branch-predict update
   logic                                                            is_mispredict;
   logic ras_push, ras_pop;
+  // Hidden freeze: while frozen the predictors are neither looked up, updated nor flushed (the
+  // trap/xRET flush included), so the guest finds them as it left them and can't steer the
+  // host's speculation. Branches fall back to the static prediction.
+  logic flush_bp;
+  assign flush_bp = flush_bp_i & ~freeze_i;
   logic [           CVA6Cfg.VLEN-1:0] ras_update;
 
   // Instruction FIFO
@@ -244,7 +251,7 @@ module frontend
           ras_pop = 1'b0;
           ras_push = 1'b0;
           cf_type[i] = ariane_pkg::JumpR;
-          if (CVA6Cfg.BTBEntries != 0 && btb_prediction_shifted[i].valid) begin
+          if (CVA6Cfg.BTBEntries != 0 && btb_prediction_shifted[i].valid && !freeze_i) begin
             predict_address = btb_prediction_shifted[i].target_address;
             cf_valid[i] = 1'b1;
           end
@@ -261,18 +268,18 @@ module frontend
         // return
         4'b0100: begin
           // make sure to only alter the RAS if we actually consumed the instruction
-          ras_pop = ras_predict.valid & instr_queue_consumed[i];
+          ras_pop = ras_predict.valid & instr_queue_consumed[i] & ~freeze_i;
           ras_push = 1'b0;
           predict_address = ras_predict.ra;
           cf_type[i] = ariane_pkg::Return;
-          cf_valid[i] = ras_predict.valid;
+          cf_valid[i] = ras_predict.valid & ~freeze_i;
         end
         // branch prediction
         4'b1000: begin
           ras_pop  = 1'b0;
           ras_push = 1'b0;
           // if we have a valid dynamic prediction use it
-          if (bht_prediction_shifted[i].valid) begin
+          if (bht_prediction_shifted[i].valid && !freeze_i) begin
             taken_rvi_cf[i] = rvi_branch[i] & bht_prediction_shifted[i].taken;
             taken_rvc_cf[i] = rvc_branch[i] & bht_prediction_shifted[i].taken;
             // otherwise default to static prediction
@@ -292,7 +299,7 @@ module frontend
       // if this instruction, in addition, is a call, save the resulting address
       // but only if we actually consumed the address
       if (is_call[i]) begin
-        ras_push   = instr_queue_consumed[i];
+        ras_push   = instr_queue_consumed[i] & ~freeze_i;
         ras_update = addr[i] + (rvc_call[i] ? 2 : 4);
       end
       // calculate the jump target address
@@ -328,13 +335,15 @@ module frontend
   assign icache_dreq_o.spec = speculative_d;
 
   assign bht_update.valid = resolved_branch_i.valid
-                                & (resolved_branch_i.cf_type == ariane_pkg::Branch);
+                                & (resolved_branch_i.cf_type == ariane_pkg::Branch)
+                                & ~freeze_i;
   assign bht_update.pc = resolved_branch_i.pc;
   assign bht_update.taken = resolved_branch_i.is_taken;
   // only update mispredicted branches e.g. no returns from the RAS
   assign btb_update.valid = resolved_branch_i.valid
                                 & resolved_branch_i.is_mispredict
-                                & (resolved_branch_i.cf_type == ariane_pkg::JumpR);
+                                & (resolved_branch_i.cf_type == ariane_pkg::JumpR)
+                                & ~freeze_i;
   assign btb_update.pc = resolved_branch_i.pc;
   assign btb_update.target_address = resolved_branch_i.target_address;
 
@@ -475,7 +484,7 @@ module frontend
     ) i_ras (
         .clk_i,
         .rst_ni,
-        .flush_bp_i(flush_bp_i),
+        .flush_bp_i(flush_bp),
         .push_i(ras_push),
         .pop_i(ras_pop),
         .data_i(ras_update),
@@ -501,7 +510,7 @@ module frontend
     ) i_btb (
         .clk_i,
         .rst_ni,
-        .flush_bp_i      (flush_bp_i),
+        .flush_bp_i      (flush_bp),
         .debug_mode_i,
         .vpc_i           (vpc_btb),
         .btb_update_i    (btb_update),
@@ -519,7 +528,7 @@ module frontend
     ) i_bht (
         .clk_i,
         .rst_ni,
-        .flush_bp_i      (flush_bp_i),
+        .flush_bp_i      (flush_bp),
         .debug_mode_i,
         .vpc_i           (vpc_bht),
         .bht_update_i    (bht_update),
@@ -532,7 +541,7 @@ module frontend
     ) i_bht (
         .clk_i,
         .rst_ni,
-        .flush_i         (flush_bp_i),
+        .flush_i         (flush_bp),
         .vpc_i           (icache_vaddr_q),
         .bht_update_i    (bht_update),
         .bht_prediction_o(bht_prediction)
