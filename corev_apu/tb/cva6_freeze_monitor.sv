@@ -16,7 +16,8 @@
 //   - registers (LFSRs, TLB arrays and PLRU trees, BHT, BTB, RAS): any change of the register.
 // Cache data is not checked (store hits update it). A guest data-cache miss accepted before the
 // exit may still fill while frozen: data-cache checks start at the first frozen cycle with no
-// cacheable miss in the MSHR.
+// cacheable miss in the MSHR. A frozen AMO invalidates the way its line hits in: that is allowed
+// (one way, valid cleared), and listed as "allowed dcache-amo-inv@<cycle>".
 //
 // One line per freeze window:
 //   [freeze-mon] window <n> cycles <first>-<last> end=<xret|hfrz0> clean
@@ -76,6 +77,13 @@ module cva6_freeze_monitor (
                          !`FM_DCACHE.i_wt_dcache_missunit.mshr_q.nc;
   assign dc_check = freeze && (dc_check_q || !dc_guest_miss);
 
+  // Allowed: a frozen AMO invalidating one way
+  logic dc_amo_inv;
+  assign dc_amo_inv = `FM_DCACHE.i_wt_dcache_missunit.amo_frz_q &&
+                      `FM_DCACHE.i_wt_dcache_mem.vld_we &&
+                      $onehot(`FM_DCACHE.i_wt_dcache_mem.vld_req) &&
+                      `FM_DCACHE.i_wt_dcache_mem.vld_wdata == '0;
+
   // Register copies from the previous cycle
   var type (`FM_DCACHE.i_wt_dcache_missunit.i_lfsr_inv.lfsr_q) dc_lfsr_q;
   var type (`FM_ICACHE.i_lfsr.lfsr_q) ic_lfsr_q;
@@ -94,7 +102,7 @@ module cva6_freeze_monitor (
   always_comb begin
     chg_now = '0;
     chg_now[DcacheTags] = dc_check && `FM_DCACHE.i_wt_dcache_mem.vld_we &&
-                          |`FM_DCACHE.i_wt_dcache_mem.vld_req;
+                          |`FM_DCACHE.i_wt_dcache_mem.vld_req && !dc_amo_inv;
     chg_now[IcacheTags] = freeze && `FM_ICACHE.vld_we && |`FM_ICACHE.vld_req;
 
     chg_prev = '0;
@@ -124,6 +132,8 @@ module cva6_freeze_monitor (
   int unsigned windows;
   logic [NumStructs-1:0] changed;
   longint unsigned first_chg[NumStructs];
+  bit amo_inv;
+  longint unsigned first_amo_inv;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
@@ -132,6 +142,7 @@ module cva6_freeze_monitor (
       dc_check_q <= 1'b0;
       windows    <= 0;
       changed    <= '0;
+      amo_inv    <= 1'b0;
     end else begin
       automatic logic [NumStructs-1:0] chg = changed;
       automatic string msg;
@@ -165,6 +176,10 @@ module cva6_freeze_monitor (
         end
       end
       changed <= chg;
+      if (dc_check && dc_amo_inv && !amo_inv) begin
+        amo_inv       <= 1'b1;
+        first_amo_inv <= cycle;
+      end
 
       // The window closed in the previous cycle: its last register changes are checked now
       if (freeze_q && !freeze) begin
@@ -184,9 +199,11 @@ module cva6_freeze_monitor (
             end
           end
         end
+        if (amo_inv) msg = {msg, $sformatf(" allowed dcache-amo-inv@%0d", first_amo_inv)};
         $display("%s", msg);
         windows <= windows + 1;
         changed <= '0;
+        amo_inv <= 1'b0;
         if ((chg & mask) != '0 && !warn_only) $fatal(1, "[freeze-mon] frozen state changed");
       end
     end
