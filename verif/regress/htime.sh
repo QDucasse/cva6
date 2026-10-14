@@ -46,25 +46,48 @@ run() {
     "$@"
 }
 
+# One test of testlist_htime.yaml, with its sim_args (e.g. the freeze monitor's expected windows)
+# added to the simulator plusargs: cva6.py doesn't read sim_args.
+run_htime() {
+  local target="$1"
+  local test="$2"
+  local sim_args
+
+  sim_args="$(python3 -c '
+import sys, yaml
+for t in yaml.safe_load(open(sys.argv[1]))["testlist"]:
+  if t["test"] == sys.argv[2]:
+    print(t.get("sim_args", ""))
+' ../tests/testlist_htime.yaml "${test}")"
+  run testlist_htime.yaml "${target}" --test="${test}" \
+    --issrun_opts="+debug_disable=1 ${sim_args}"
+}
+
 for target in "${htime_target}" "${base_target}"; do
   # The generated model does not track configuration changes.
   make -C ../.. clean
 
   if [[ "${target}" == "${htime_target}" ]]; then
-    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-time-mtime
-    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-time-counteren
-    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-time-vs
-    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-csrs
-    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-hide-routes
-    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-hide-hs-ctl
-    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-hide-view
-    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-hide-instret
-    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-sstc
-    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-sstc-irq
-    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-hvti
-    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-introspect
+    run_htime "${target}" rv64h-p-htime-time-mtime
+    run_htime "${target}" rv64h-p-htime-time-counteren
+    run_htime "${target}" rv64h-p-htime-time-vs
+    run_htime "${target}" rv64h-p-htime-csrs
+    run_htime "${target}" rv64h-p-htime-hide-routes
+    run_htime "${target}" rv64h-p-htime-hide-hs-ctl
+    run_htime "${target}" rv64h-p-htime-hide-view
+    run_htime "${target}" rv64h-p-htime-hide-instret
+    run_htime "${target}" rv64h-p-htime-sstc
+    run_htime "${target}" rv64h-p-htime-sstc-irq
+    run_htime "${target}" rv64h-p-htime-hvti
+    run_htime "${target}" rv64h-p-htime-introspect
+    run_htime "${target}" rv64h-p-htime-freeze-window
+    run_htime "${target}" rv64h-p-htime-freeze-dcache
+    run_htime "${target}" rv64h-p-htime-freeze-icache
+    run_htime "${target}" rv64h-p-htime-freeze-tlb
+    run_htime "${target}" rv64h-p-htime-freeze-bpred
+    run_htime "${target}" rv64h-p-htime-freeze-fence
   else
-    run testlist_htime.yaml "${target}" --test=rv64h-p-htime-time-off
+    run_htime "${target}" rv64h-p-htime-time-off
   fi
 
   run testlist_hlvx_gstage.yaml "${target}"
