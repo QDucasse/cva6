@@ -15,7 +15,7 @@
 # translation is evicted, and the handler's code fetches install ITLB entries). Every frozen
 # walk result goes to a TLB scratch entry. The guest then loads its pages again. The
 # testbench freeze monitor checks that the caches and TLBs (arrays and PLRU trees) didn't
-# change while frozen (freeze_mon_mask in testlist_htime.yaml).
+# change while frozen.
 #
 # Expected windows: xret (the ecall exit), hfrz0 (the final ebreak to M, ended in M).
 

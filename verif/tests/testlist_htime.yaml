@@ -74,57 +74,50 @@ testlist:
     gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
     asm_tests: <path_var>/custom/htime/htime_introspect.S
 
-  # Hidden freeze. Checked by the testbench freeze monitor: freeze_windows is the expected sequence
-  # of windows, each as its end reason followed by +<what> for each allowed difference
-  # (htime_par.py); sim_args +freeze_mon_mask selects the structures that must not change while
-  # frozen (cva6_freeze_monitor.sv), widened as the freeze is implemented.
+  # Hidden freeze. Checked by the testbench freeze monitor (cva6_freeze_monitor.sv), which checks
+  # all structures by default: sim_args +freeze_mon_expect is the expected sequence of windows, each
+  # as its end reason followed by +<what> for each allowed change. htime.sh passes sim_args.
   - test: rv64h-p-htime-freeze-window
     iterations: 1
     path_var: TESTS_PATH
     gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
     asm_tests: <path_var>/custom/htime/freeze_window.S
-    sim_args: "+freeze_mon_mask=1ff"
-    freeze_windows: "xret xret hfrz0 xret xret hfrz0 xret xret hfrz0 xret hfrz0 hfrz0"
+    sim_args: "+freeze_mon_expect=xret,xret,hfrz0,xret,xret,hfrz0,xret,xret,hfrz0,xret,hfrz0,hfrz0"
 
   - test: rv64h-p-htime-freeze-dcache
     iterations: 1
     path_var: TESTS_PATH
     gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
     asm_tests: <path_var>/custom/htime/freeze_dcache.S
-    sim_args: "+freeze_mon_mask=1ff"
-    freeze_windows: "xret+dcache-amo-inv hfrz0"
+    sim_args: "+freeze_mon_expect=xret+dcache-amo-inv,hfrz0"
 
   - test: rv64h-p-htime-freeze-icache
     iterations: 1
     path_var: TESTS_PATH
     gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
     asm_tests: <path_var>/custom/htime/freeze_icache.S
-    sim_args: "+freeze_mon_mask=1ff"
-    freeze_windows: "xret hfrz0"
+    sim_args: "+freeze_mon_expect=xret,hfrz0"
 
   - test: rv64h-p-htime-freeze-tlb
     iterations: 1
     path_var: TESTS_PATH
     gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
     asm_tests: <path_var>/custom/htime/freeze_tlb.S
-    sim_args: "+freeze_mon_mask=1ff"
-    freeze_windows: "xret hfrz0"
+    sim_args: "+freeze_mon_expect=xret,hfrz0"
 
   - test: rv64h-p-htime-freeze-bpred
     iterations: 1
     path_var: TESTS_PATH
     gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
     asm_tests: <path_var>/custom/htime/freeze_bpred.S
-    sim_args: "+freeze_mon_mask=1ff"
-    freeze_windows: "xret hfrz0"
+    sim_args: "+freeze_mon_expect=xret,hfrz0"
 
   - test: rv64h-p-htime-freeze-fence
     iterations: 1
     path_var: TESTS_PATH
     gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
     asm_tests: <path_var>/custom/htime/freeze_fence.S
-    sim_args: "+freeze_mon_mask=1ff"
-    freeze_windows: "xret+icache-fence xret+itlb-fence+dtlb-fence hfrz0"
+    sim_args: "+freeze_mon_expect=xret+icache-fence,xret+itlb-fence+dtlb-fence,hfrz0"
 
   - test: rv64h-p-htime-time-off
     iterations: 1

@@ -11,8 +11,7 @@
 # GUEST_CODE bytes, then exits to HS with HFRZ armed. The frozen HS handler runs HV_CODE bytes of
 # straight-line code (twice the cache, so without the freeze every guest line is evicted and the
 # LFSR moves), counting the instructions it ran. The guest runs its block again. The testbench
-# freeze monitor checks that the caches' tags and LFSRs didn't change while frozen
-# (freeze_mon_mask in testlist_htime.yaml).
+# freeze monitor checks that the caches' tags and LFSRs didn't change while frozen.
 #
 # Expected windows: xret (the ecall exit), hfrz0 (the final ebreak to M, ended in M).
 

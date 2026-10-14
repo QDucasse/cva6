@@ -29,10 +29,16 @@
 // end=xret: the return to the guest ended the freeze; end=hfrz0: HFRZ was written 0.
 // A change in a checked structure is fatal at the end of its window.
 //
+// Each window also gives a token: its end reason, then "+<what>" for each allowed change, in the
+// order above (e.g. "xret+itlb-fence+dtlb-fence"). With +freeze_mon_expect, a test that passes
+// (tohost = 1) fails unless its windows' tokens are exactly the expected ones, so a test whose
+// freeze never happened, ended the wrong way or had other allowed changes can't pass.
+//
 // Plusargs:
-//   +freeze_mon_mask=<hex>  structures checked (bit = index in the table below), default all;
-//                           unchecked changes are still reported, as "(unchecked)"
-//   +freeze_mon_warn        report changes without failing
+//   +freeze_mon_mask=<hex>       structures checked (bit = index in the table below), default
+//                                all; unchecked changes are still reported, as "(unchecked)"
+//   +freeze_mon_warn             report changes without failing
+//   +freeze_mon_expect=<tokens>  expected windows, comma-separated tokens
 
 module cva6_freeze_monitor #(
     // TLB arrays (the extra bypass entry after them is allowed to change while frozen)
@@ -171,9 +177,12 @@ module cva6_freeze_monitor #(
 
   logic [NumStructs-1:0] mask;
   bit warn_only;
+  bit check_expect;
+  string expect_wins;
   initial begin
     if (!$value$plusargs("freeze_mon_mask=%h", mask)) mask = '1;
     warn_only = $test$plusargs("freeze_mon_warn");
+    check_expect = $value$plusargs("freeze_mon_expect=%s", expect_wins);
   end
 
   longint unsigned cycle;
@@ -183,6 +192,7 @@ module cva6_freeze_monitor #(
   longint unsigned first_chg[NumStructs];
   logic [NumAllowed-1:0] allowed;
   longint unsigned first_alw[NumAllowed];
+  string seen_wins;  // tokens of the windows so far, comma-separated
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
@@ -192,10 +202,12 @@ module cva6_freeze_monitor #(
       windows    <= 0;
       changed    <= '0;
       allowed    <= '0;
+      seen_wins  <= "";
     end else begin
       automatic logic [NumStructs-1:0] chg = changed;
       automatic logic [NumAllowed-1:0] alw = allowed;
       automatic string msg;
+      automatic string tok;
 
       cycle      <= cycle + 1;
       freeze_q   <= freeze;
@@ -244,7 +256,8 @@ module cva6_freeze_monitor #(
       if (freeze_q && !freeze) begin
         msg = $sformatf("[freeze-mon] window %0d cycles %0d-%0d end=", windows, win_first,
                         cycle - 1);
-        msg = {msg, `FM_CORE.csr_regfile_i.htimectl_hfrz_q ? "xret" : "hfrz0"};
+        tok = `FM_CORE.csr_regfile_i.htimectl_hfrz_q ? "xret" : "hfrz0";
+        msg = {msg, tok};
         if (chg == '0) begin
           msg = {msg, " clean"};
         end else begin
@@ -262,14 +275,31 @@ module cva6_freeze_monitor #(
           if (alw[i]) begin
             msg = {msg, $sformatf(" allowed %s@%0d", allowed_name(i),
                                   allowed[i] ? first_alw[i] : (alw_now[i] ? cycle : cycle - 1))};
+            tok = {tok, "+", allowed_name(i)};
           end
         end
         $display("%s", msg);
+        seen_wins <= (windows == 0) ? tok : {seen_wins, ",", tok};
         windows <= windows + 1;
         changed <= '0;
         allowed <= '0;
         if ((chg & mask) != '0 && !warn_only) $fatal(1, "[freeze-mon] frozen state changed");
       end
+    end
+  end
+
+  // End of test (testharness exit_o, bit 0 set, tohost in the upper bits): a passing test must
+  // have had the expected windows. A failing test is already reported as such.
+  logic test_done;
+  assign test_done = ariane_testharness.exit_o[0];
+  always @(posedge test_done) begin
+    if (check_expect && ariane_testharness.exit_o == 32'd1) begin
+      if (seen_wins != expect_wins) begin
+        $display("[freeze-mon] windows %s, expected %s", (windows == 0) ? "none" : seen_wins,
+                 expect_wins);
+        $fatal(1, "[freeze-mon] unexpected freeze windows");
+      end
+      $display("[freeze-mon] windows as expected: %s", seen_wins);
     end
   end
 

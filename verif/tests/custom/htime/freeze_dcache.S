@@ -14,8 +14,7 @@
 # runs AMOs: amoadd on a guest line (cached: only its way is invalidated) and on its own buffer
 # (not cached: nothing invalidated), LR/SC on a guest line. Back in the guest, every value
 # written must be seen. The testbench freeze monitor checks that the data-cache tags and LFSR
-# didn't change while frozen, apart from the AMOs' way invalidations (freeze_mon_mask in
-# testlist_htime.yaml).
+# didn't change while frozen, apart from the AMOs' way invalidations.
 #
 # Expected windows: xret (the ecall exit), hfrz0 (the final ebreak to M, ended in M).
 

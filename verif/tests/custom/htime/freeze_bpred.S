@@ -13,7 +13,7 @@
 # flush is skipped and the predictors are off. The frozen HS handler runs its own loop of
 # branches, indirect jumps and calls, and must compute the right result without predictions. The
 # guest then runs its loop again. The testbench freeze monitor checks that the caches, TLBs and
-# predictors didn't change while frozen (freeze_mon_mask in testlist_htime.yaml).
+# predictors didn't change while frozen.
 #
 # Expected windows: xret (the ecall exit), hfrz0 (the final ebreak to M, ended in M).
 

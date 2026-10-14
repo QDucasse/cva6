@@ -9,8 +9,8 @@
 #
 # Hidden freeze: when the freeze starts and ends.
 # The freeze isn't architecturally visible: the testbench's freeze monitor prints one line per
-# freeze window with how it ended, and the runner checks the sequence (freeze_windows in
-# testlist_htime.yaml). Each MEASURE runs two guest ecalls, then leaves the guest with an ebreak
+# freeze window with how it ended, and checks the sequence against +freeze_mon_expect (sim_args
+# in testlist_htime.yaml). Each MEASURE runs two guest ecalls, then leaves the guest with an ebreak
 # to M (a V 1->0 trap too) and clears htimectl in M. See htime_exit.h.
 #
 # Expected windows, in order:
