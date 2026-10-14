@@ -665,7 +665,10 @@ module ariane_testharness #(
 
   // Hidden freeze: check that the frozen caches, TLBs and predictors don't change
   if (CVA6Cfg.RVHiddenFreeze) begin : gen_freeze_monitor
-    cva6_freeze_monitor i_freeze_monitor (
+    cva6_freeze_monitor #(
+      .ItlbEntries ( CVA6Cfg.InstrTlbEntries ),
+      .DtlbEntries ( CVA6Cfg.DataTlbEntries  )
+    ) i_freeze_monitor (
       .clk_i  ( clk_i      ),
       .rst_ni ( ndmreset_n )
     );
