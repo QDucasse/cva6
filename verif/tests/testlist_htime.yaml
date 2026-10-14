@@ -74,6 +74,17 @@ testlist:
     gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
     asm_tests: <path_var>/custom/htime/htime_introspect.S
 
+  # Hidden freeze. Checked by the testbench freeze monitor: freeze_windows is the expected sequence
+  # of window end reasons (htime_par.py); sim_args +freeze_mon_mask selects the structures that
+  # must not change while frozen (cva6_freeze_monitor.sv), none until the freeze is implemented.
+  - test: rv64h-p-htime-freeze-window
+    iterations: 1
+    path_var: TESTS_PATH
+    gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
+    asm_tests: <path_var>/custom/htime/freeze_window.S
+    sim_args: "+freeze_mon_mask=0"
+    freeze_windows: "xret xret hfrz0 xret xret hfrz0 xret xret hfrz0 xret hfrz0 hfrz0"
+
   - test: rv64h-p-htime-time-off
     iterations: 1
     path_var: TESTS_PATH

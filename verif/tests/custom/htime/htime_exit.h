@@ -54,6 +54,8 @@
 #define ACT_CLEAR_HHAE  2
 #define ACT_ADD_HIDDEN  3   // hhidden_* += s9
 #define ACT_SUB_EXIT    4   // hexit_*   -= s9
+#define ACT_CLEAR_HFRZ  5
+#define ACT_SET_HFRZ    6
 
 #define ROUTE_M   0
 #define ROUTE_HS  1
@@ -180,7 +182,15 @@
   csrr t6, CSR_HEXIT_CYCLE_NUM;                                         \
   sub  t6, t6, s9;                                                      \
   csrw CSR_HEXIT_CYCLE_NUM, t6;                                         \
-4:
+4:                                                                      \
+  li   t5, ACT_CLEAR_HFRZ;                                              \
+  bne  a5, t5, 15f;                                                     \
+  csrci CSR_HTIMECTL_NUM, HTIMECTL_HFRZ;                                \
+15:                                                                     \
+  li   t5, ACT_SET_HFRZ;                                                \
+  bne  a5, t5, 16f;                                                     \
+  csrsi CSR_HTIMECTL_NUM, HTIMECTL_HFRZ;                                \
+16:
 
 // From M: route traps for the exit handlers, enable time/cycle everywhere, set htimedelta.
 // The p env delegates ebreak to S; EXIT_TO_M needs it in M.
