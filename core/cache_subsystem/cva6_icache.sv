@@ -82,6 +82,13 @@ module cva6_icache
   logic [CVA6Cfg.VLEN-1:0] vaddr_d, vaddr_q;
   logic paddr_is_nc;  // asserted if physical address is non-cacheable
   logic nc_d, nc_q;  // non-cacheable bit of the outstanding miss, latched when it is sent
+  // Hidden freeze: killed misses whose fill is still to come. Fills return in order (one AXI ID),
+  // so the next stale_q fills are dropped. Lets a killed miss go back to IDLE at once instead of
+  // waiting in KILL_MISS, so the next fetch doesn't wait one memory latency for a dead fill.
+  localparam int unsigned StaleMax = 3;
+  logic [1:0] stale_d, stale_q;
+  logic rtrn_fill;  // fill for the outstanding miss (not a stale one)
+  logic rtrn_stale;  // fill for a killed miss, dropped
   logic [CVA6Cfg.ICACHE_SET_ASSOC-1:0] cl_hit;  // hit from tag compare
   logic cache_rden;  // triggers cache lookup
   logic cache_wren;  // triggers write to cacheline
@@ -185,6 +192,9 @@ module cva6_icache
   // invalidations take two cycles
   assign inv_d          = inv_en;
 
+  assign rtrn_fill = mem_rtrn_vld_i && mem_rtrn_i.rtype == ICACHE_IFILL_ACK && stale_q == '0;
+  assign rtrn_stale = mem_rtrn_vld_i && mem_rtrn_i.rtype == ICACHE_IFILL_ACK && stale_q != '0;
+
   ///////////////////////////////////////////////////////
   // main control logic
   ///////////////////////////////////////////////////////
@@ -203,6 +213,7 @@ module cva6_icache
     inv_en = 1'b0;
     flush_d = flush_q | flush_i;  // register incoming flush
     nc_d = nc_q;
+    stale_d = stale_q - 2'(rtrn_stale);
 
     // interfaces
     dreq_o.ready = 1'b0;
@@ -321,7 +332,7 @@ module cva6_icache
       MISS: begin
         // note: this is mutually exclusive with ICACHE_INV_REQ,
         // so we do not have to check for invals here
-        if (mem_rtrn_vld_i && mem_rtrn_i.rtype == ICACHE_IFILL_ACK) begin
+        if (rtrn_fill) begin
           state_d = IDLE;
           // only return data if request is not being killed
           if (!(dreq_i.kill_s2 || flush_d)) begin
@@ -332,7 +343,13 @@ module cva6_icache
           end
           // bail out if this request is being killed
         end else if (dreq_i.kill_s2 || flush_d) begin
-          state_d = KILL_MISS;
+          // hidden freeze: don't wait for the fill, drop it when it comes
+          if (CVA6Cfg.RVHiddenFreeze && stale_q != StaleMax) begin
+            state_d = IDLE;
+            stale_d = stale_q - 2'(rtrn_stale) + 2'd1;
+          end else begin
+            state_d = KILL_MISS;
+          end
         end
       end
       //////////////////////////////////
@@ -350,7 +367,7 @@ module cva6_icache
       // wait until memory responds and
       // go back to idle
       KILL_MISS: begin
-        if (mem_rtrn_vld_i && mem_rtrn_i.rtype == ICACHE_IFILL_ACK) begin
+        if (rtrn_fill) begin
           state_d = IDLE;
         end
       end
@@ -523,6 +540,7 @@ module cva6_icache
       repl_way_oh_q <= '0;
       inv_q         <= '0;
       nc_q          <= '0;
+      stale_q       <= '0;
     end else begin
       cl_tag_q      <= cl_tag_d;
       flush_cnt_q   <= flush_cnt_d;
@@ -535,6 +553,7 @@ module cva6_icache
       repl_way_oh_q <= repl_way_oh_d;
       inv_q         <= inv_d;
       nc_q          <= nc_d;
+      stale_q       <= stale_d;
     end
   end
 
