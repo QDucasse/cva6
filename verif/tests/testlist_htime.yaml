@@ -82,7 +82,7 @@ testlist:
     path_var: TESTS_PATH
     gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
     asm_tests: <path_var>/custom/htime/freeze_window.S
-    sim_args: "+freeze_mon_mask=3f"
+    sim_args: "+freeze_mon_mask=1ff"
     freeze_windows: "xret xret hfrz0 xret xret hfrz0 xret xret hfrz0 xret hfrz0 hfrz0"
 
   - test: rv64h-p-htime-freeze-dcache
@@ -90,7 +90,7 @@ testlist:
     path_var: TESTS_PATH
     gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
     asm_tests: <path_var>/custom/htime/freeze_dcache.S
-    sim_args: "+freeze_mon_mask=3f"
+    sim_args: "+freeze_mon_mask=1ff"
     freeze_windows: "xret hfrz0"
 
   - test: rv64h-p-htime-freeze-icache
@@ -98,7 +98,7 @@ testlist:
     path_var: TESTS_PATH
     gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
     asm_tests: <path_var>/custom/htime/freeze_icache.S
-    sim_args: "+freeze_mon_mask=3f"
+    sim_args: "+freeze_mon_mask=1ff"
     freeze_windows: "xret hfrz0"
 
   - test: rv64h-p-htime-freeze-tlb
@@ -106,7 +106,15 @@ testlist:
     path_var: TESTS_PATH
     gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
     asm_tests: <path_var>/custom/htime/freeze_tlb.S
-    sim_args: "+freeze_mon_mask=3f"
+    sim_args: "+freeze_mon_mask=1ff"
+    freeze_windows: "xret hfrz0"
+
+  - test: rv64h-p-htime-freeze-bpred
+    iterations: 1
+    path_var: TESTS_PATH
+    gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
+    asm_tests: <path_var>/custom/htime/freeze_bpred.S
+    sim_args: "+freeze_mon_mask=1ff"
     freeze_windows: "xret hfrz0"
 
   - test: rv64h-p-htime-time-off
