@@ -720,6 +720,7 @@ module cva6
       .rst_ni,
       .boot_addr_i        (boot_addr_i[CVA6Cfg.VLEN-1:0]),
       .flush_bp_i         ((CVA6Cfg.RVU || CVA6Cfg.RVS) ? flush_ctrl_bp : 1'b0),
+      .freeze_i           (freeze_csr),
       // below line is not entirely correct
       .flush_i            (flush_ctrl_if),
       .halt_i             (halt_ctrl),
