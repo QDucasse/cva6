@@ -14,6 +14,7 @@
 // snapshot at the freeze start with the state at the return:
 //   - cache tag/valid SRAMs: any write;
 //   - registers (LFSRs, TLB arrays and PLRU trees, BHT, BTB, RAS): any change of the register.
+//     The TLBs' bypass entry (cva6_tlb.sv) is not checked: it holds the frozen walk results.
 // Cache data is not checked (store hits update it). A guest data-cache miss accepted before the
 // exit may still fill while frozen: data-cache checks start at the first frozen cycle with no
 // cacheable miss in the MSHR. A frozen AMO invalidates the way its line hits in: that is allowed
@@ -30,7 +31,11 @@
 //                           unchecked changes are still reported, as "(unchecked)"
 //   +freeze_mon_warn        report changes without failing
 
-module cva6_freeze_monitor (
+module cva6_freeze_monitor #(
+    // TLB arrays (the extra bypass entry after them is allowed to change while frozen)
+    parameter int unsigned ItlbEntries = 16,
+    parameter int unsigned DtlbEntries = 16
+) (
     input logic clk_i,
     input logic rst_ni
 );
@@ -109,12 +114,14 @@ module cva6_freeze_monitor (
     chg_prev[DcacheLfsr] = dc_check_q &&
                            dc_lfsr_q != `FM_DCACHE.i_wt_dcache_missunit.i_lfsr_inv.lfsr_q;
     chg_prev[IcacheLfsr] = freeze_q && ic_lfsr_q != `FM_ICACHE.i_lfsr.lfsr_q;
-    chg_prev[Itlb] = freeze_q && (itlb_tags_q != `FM_MMU.i_itlb.tags_q ||
-                                  itlb_content_q != `FM_MMU.i_itlb.content_q ||
-                                  itlb_plru_q != `FM_MMU.i_itlb.plru_tree_q);
-    chg_prev[Dtlb] = freeze_q && (dtlb_tags_q != `FM_MMU.i_dtlb.tags_q ||
-                                  dtlb_content_q != `FM_MMU.i_dtlb.content_q ||
-                                  dtlb_plru_q != `FM_MMU.i_dtlb.plru_tree_q);
+    chg_prev[Itlb] = freeze_q &&
+        (itlb_tags_q[ItlbEntries-1:0] != `FM_MMU.i_itlb.tags_q[ItlbEntries-1:0] ||
+         itlb_content_q[ItlbEntries-1:0] != `FM_MMU.i_itlb.content_q[ItlbEntries-1:0] ||
+         itlb_plru_q != `FM_MMU.i_itlb.plru_tree_q);
+    chg_prev[Dtlb] = freeze_q &&
+        (dtlb_tags_q[DtlbEntries-1:0] != `FM_MMU.i_dtlb.tags_q[DtlbEntries-1:0] ||
+         dtlb_content_q[DtlbEntries-1:0] != `FM_MMU.i_dtlb.content_q[DtlbEntries-1:0] ||
+         dtlb_plru_q != `FM_MMU.i_dtlb.plru_tree_q);
     chg_prev[Bht] = freeze_q && bht_q != `FM_FRONTEND.bht_gen.i_bht.bht_q;
     chg_prev[Btb] = freeze_q && btb_q != `FM_FRONTEND.btb_gen.i_btb.gen_asic_btb.btb_q;
     chg_prev[Ras] = freeze_q && ras_q != `FM_FRONTEND.ras_gen.i_ras.stack_q;
