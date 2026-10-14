@@ -36,16 +36,16 @@
   CHECK_RW(CSR_HEXIT_INSTRET_NUM, val);                                 \
   CHECK_RW(CSR_HHIDDEN_INSTRET_NUM, val)
 
-# htimectl: only HHAE is writable, reserved bits read 0.
+# htimectl: only HHAE and HFRZ are writable, reserved bits read 0.
 #define CHECK_HTIMECTL                                                  \
   li   t1, -1;                                                          \
   PROBE(csrw CSR_HTIMECTL_NUM, t1);                                     \
   EXPECT_NO_FAULT;                                                      \
   PROBE(csrr a1, CSR_HTIMECTL_NUM);                                     \
   EXPECT_NO_FAULT;                                                      \
-  li   t1, HTIMECTL_HHAE;                                               \
+  li   t1, HTIMECTL_WMASK;                                              \
   bne  a1, t1, fail;                                                    \
-  li   t1, ~HTIMECTL_HHAE;                                              \
+  li   t1, ~HTIMECTL_WMASK;                                             \
   PROBE(csrw CSR_HTIMECTL_NUM, t1);                                     \
   EXPECT_NO_FAULT;                                                      \
   PROBE(csrr a1, CSR_HTIMECTL_NUM);                                     \
