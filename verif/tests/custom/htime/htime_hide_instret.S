@@ -15,6 +15,9 @@
 # a hidden exit gives s5 - s3 = 1 (the first csrr). Back in M after EXIT_TO_M (an ebreak,
 # which also does not retire), hexit_instret holds minstret at that exit, so
 #   hexit_instret - hhidden_instret = s5 + 1.
+#
+# QEMU (-DHTIME_QEMU): minstret follows host ticks like mcycle (instructions only with
+# -icount, and even then not per instruction), so the exact checks become the cycle bounds.
 
 #include "htime_exit.h"
 
@@ -42,27 +45,43 @@
   EXIT_TO_M;                                                            \
   csrw CSR_HTIMECTL_NUM, zero
 
+# Fail unless lo <= t0 <= hi (unsigned).
+#define EXPECT_T0_IN(lo, hi)                                            \
+  li   t1, lo;                                                          \
+  bltu t0, t1, fail;                                                    \
+  li   t1, hi;                                                          \
+  bltu t1, t0, fail
+
+# IR_ONE_*: what instret moves by over one instruction; IR_VISIBLE_MIN: over a visible exit.
+#ifdef HTIME_QEMU
+#define IR_ONE_MIN      0
+#define IR_ONE_MAX      BOUND_CYCLES
+#define IR_VISIBLE_MIN  SPIN_CYCLES
+#else
+#define IR_ONE_MIN      1
+#define IR_ONE_MAX      1
+#define IR_VISIBLE_MIN  2
+#endif
+
 # hexit_instret latched at the EXIT_TO_M ebreak, in the guest's count.
 #define EXPECT_LATCH_IR                                                 \
   csrr t0, CSR_HEXIT_INSTRET_NUM;                                       \
   csrr t1, CSR_HHIDDEN_INSTRET_NUM;                                     \
   sub  t0, t0, t1;                                                      \
-  addi t1, s5, 1;                                                       \
-  bne  t0, t1, fail
+  sub  t0, t0, s5;                                                      \
+  EXPECT_T0_IN(IR_ONE_MIN, IR_ONE_MAX)
 
-# Hidden: the guest saw exactly its own csrr, and hhidden_instret grew.
+# Hidden: the guest saw only its own csrr, and hhidden_instret grew.
 #define EXPECT_HIDDEN_IR                                                \
   sub  t0, s5, s3;                                                      \
-  li   t1, 1;                                                           \
-  bne  t0, t1, fail;                                                    \
+  EXPECT_T0_IN(IR_ONE_MIN, IR_ONE_MAX);                                 \
   csrr t0, CSR_HHIDDEN_INSTRET_NUM;                                     \
   bgeu s6, t0, fail
 
 # Visible: the guest also saw the handler's instructions, and hhidden_instret is unchanged.
 #define EXPECT_VISIBLE_IR                                               \
   sub  t0, s5, s3;                                                      \
-  li   t1, 1;                                                           \
-  bgeu t1, t0, fail;                                                    \
+  EXPECT_T0_IN(IR_VISIBLE_MIN, -1);                                     \
   csrr t0, CSR_HHIDDEN_INSTRET_NUM;                                     \
   bne  t0, s6, fail
 
@@ -116,10 +135,10 @@ RVTEST_CODE_BEGIN
 
   # 5. V=0 ignores hhidden_instret: instret = minstret in M and HS.
   li   TESTNUM, 5
-  csrr t0, minstret
-  csrr t1, instret
-  addi t0, t0, 1
-  bne  t1, t0, fail
+  csrr t1, minstret
+  csrr t0, instret
+  sub  t0, t0, t1
+  EXPECT_T0_IN(IR_ONE_MIN, IR_ONE_MAX)
   csrr s6, minstret
   ENTER_MODE(MODE_HS)
   csrr s7, instret

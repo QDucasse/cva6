@@ -10,7 +10,7 @@
 # Hidden-time: access to the eight hidden-time CSRs (htimectl, hexit_time, hhidden_time,
 # hvtimecmp, hexit_cycle, hhidden_cycle, hexit_instret, hhidden_instret). Values are only
 # checked before any V=1 entry or within a single HS stay, so hardware latching on V edges
-# does not interfere. The QEMU model has no instret CSRs yet (-DHTIME_QEMU leaves them out).
+# does not interfere.
 
 #include "htime_macros.h"
 
@@ -33,7 +33,8 @@
   CHECK_RW(CSR_HVTIMECMP_NUM, val);                                     \
   CHECK_RW(CSR_HEXIT_CYCLE_NUM, val);                                   \
   CHECK_RW(CSR_HHIDDEN_CYCLE_NUM, val);                                 \
-  CHECK_RW_INSTRET(val)
+  CHECK_RW(CSR_HEXIT_INSTRET_NUM, val);                                 \
+  CHECK_RW(CSR_HHIDDEN_INSTRET_NUM, val)
 
 # htimectl: only HHAE is writable, reserved bits read 0.
 #define CHECK_HTIMECTL                                                  \
@@ -68,19 +69,8 @@
   CHECK_DENIED(CSR_HVTIMECMP_NUM, cause);                               \
   CHECK_DENIED(CSR_HEXIT_CYCLE_NUM, cause);                             \
   CHECK_DENIED(CSR_HHIDDEN_CYCLE_NUM, cause);                           \
-  CHECK_DENIED_INSTRET(cause)
-
-#ifdef HTIME_QEMU
-#define CHECK_RW_INSTRET(val)
-#define CHECK_DENIED_INSTRET(cause)
-#else
-#define CHECK_RW_INSTRET(val)                                           \
-  CHECK_RW(CSR_HEXIT_INSTRET_NUM, val);                                 \
-  CHECK_RW(CSR_HHIDDEN_INSTRET_NUM, val)
-#define CHECK_DENIED_INSTRET(cause)                                     \
   CHECK_DENIED(CSR_HEXIT_INSTRET_NUM, cause);                           \
   CHECK_DENIED(CSR_HHIDDEN_INSTRET_NUM, cause)
-#endif
 
 #define MODE_HS   MSTATUS_MPP_S
 #define MODE_U    MSTATUS_MPP_U
@@ -104,12 +94,10 @@ RVTEST_CODE_BEGIN
   bnez a1, fail
   csrr a1, CSR_HHIDDEN_CYCLE_NUM
   bnez a1, fail
-#ifndef HTIME_QEMU
   csrr a1, CSR_HEXIT_INSTRET_NUM
   bnez a1, fail
   csrr a1, CSR_HHIDDEN_INSTRET_NUM
   bnez a1, fail
-#endif
 
   # 2. R/W from M (all 64 bits); htimectl reserved bits read 0.
   li   TESTNUM, 2
