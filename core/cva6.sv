@@ -1109,6 +1109,7 @@ module cva6
       .flush_tlb_i                  (flush_tlb_ctrl_ex),
       .flush_tlb_vvma_i             (flush_tlb_vvma_ctrl_ex),
       .flush_tlb_gvma_i             (flush_tlb_gvma_ctrl_ex),
+      .freeze_i                     (freeze_csr),
       .priv_lvl_i                   (priv_lvl),                       // from CSR
       .mbe_i                        (mbe),                            // from CSR
       .v_i                          (v),                              // from CSR
