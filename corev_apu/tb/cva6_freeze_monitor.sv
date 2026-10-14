@@ -17,11 +17,14 @@
 //     The TLBs' bypass entry (cva6_tlb.sv) is not checked: it holds the frozen walk results.
 // Cache data is not checked (store hits update it). A guest data-cache miss accepted before the
 // exit may still fill while frozen: data-cache checks start at the first frozen cycle with no
-// cacheable miss in the MSHR. A frozen AMO invalidates the way its line hits in: that is allowed
-// (one way, valid cleared), and listed as "allowed dcache-amo-inv@<cycle>".
+// cacheable miss in the MSHR.
+// Allowed changes, listed as "allowed <what>@<cycle>" but not failing:
+//   - dcache-amo-inv: a frozen AMO invalidating the way its line hits in (one way, valid cleared);
+//   - dcache-fence, icache-fence: a cache flush (fence.i, or fence with DcacheFlushOnFence);
+//   - itlb-fence, dtlb-fence: a TLB flush (sfence.vma, hfence.vvma, hfence.gvma).
 //
 // One line per freeze window:
-//   [freeze-mon] window <n> cycles <first>-<last> end=<xret|hfrz0> clean
+//   [freeze-mon] window <n> cycles <first>-<last> end=<xret|hfrz0> clean [allowed ...]
 //   [freeze-mon] window <n> cycles <first>-<last> end=<xret|hfrz0> CHANGED <struct>@<cycle> ...
 // end=xret: the return to the guest ended the freeze; end=hfrz0: HFRZ was written 0.
 // A change in a checked structure is fatal at the end of its window.
@@ -82,12 +85,35 @@ module cva6_freeze_monitor #(
                          !`FM_DCACHE.i_wt_dcache_missunit.mshr_q.nc;
   assign dc_check = freeze && (dc_check_q || !dc_guest_miss);
 
-  // Allowed: a frozen AMO invalidating one way
-  logic dc_amo_inv;
+  // Allowed changes
+  localparam int unsigned NumAllowed = 5;
+  localparam int unsigned AmoInv = 0;
+  localparam int unsigned DcacheFence = 1;
+  localparam int unsigned IcacheFence = 2;
+  localparam int unsigned ItlbFence = 3;
+  localparam int unsigned DtlbFence = 4;
+
+  function automatic string allowed_name(int unsigned i);
+    case (i)
+      AmoInv:      return "dcache-amo-inv";
+      DcacheFence: return "dcache-fence";
+      IcacheFence: return "icache-fence";
+      ItlbFence:   return "itlb-fence";
+      DtlbFence:   return "dtlb-fence";
+      default:     return "?";
+    endcase
+  endfunction
+
+  logic dc_amo_inv, dc_flush, ic_flush, itlb_flush, itlb_flush_q, dtlb_flush, dtlb_flush_q;
   assign dc_amo_inv = `FM_DCACHE.i_wt_dcache_missunit.amo_frz_q &&
-                      `FM_DCACHE.i_wt_dcache_mem.vld_we &&
                       $onehot(`FM_DCACHE.i_wt_dcache_mem.vld_req) &&
                       `FM_DCACHE.i_wt_dcache_mem.vld_wdata == '0;
+  assign dc_flush = `FM_DCACHE.i_wt_dcache_missunit.flush_en;
+  assign ic_flush = `FM_ICACHE.flush_en;
+  assign itlb_flush = `FM_MMU.i_itlb.flush_i || `FM_MMU.i_itlb.flush_vvma_i ||
+                      `FM_MMU.i_itlb.flush_gvma_i;
+  assign dtlb_flush = `FM_MMU.i_dtlb.flush_i || `FM_MMU.i_dtlb.flush_vvma_i ||
+                      `FM_MMU.i_dtlb.flush_gvma_i;
 
   // Register copies from the previous cycle
   var type (`FM_DCACHE.i_wt_dcache_missunit.i_lfsr_inv.lfsr_q) dc_lfsr_q;
@@ -102,26 +128,42 @@ module cva6_freeze_monitor #(
   var type (`FM_FRONTEND.btb_gen.i_btb.gen_asic_btb.btb_q) btb_q;
   var type (`FM_FRONTEND.ras_gen.i_ras.stack_q) ras_q;
 
-  // Changes: SRAM writes in this cycle, register changes made in the previous cycle
+  // Changes: SRAM writes in this cycle, register changes made in the previous cycle. A change
+  // with an allowed cause goes to alw_* instead of chg_*.
   logic [NumStructs-1:0] chg_now, chg_prev;
+  logic [NumAllowed-1:0] alw_now, alw_prev;
+  logic dc_tag_wr, ic_tag_wr, itlb_chg, dtlb_chg;
   always_comb begin
+    dc_tag_wr = dc_check && `FM_DCACHE.i_wt_dcache_mem.vld_we &&
+                |`FM_DCACHE.i_wt_dcache_mem.vld_req;
+    ic_tag_wr = freeze && `FM_ICACHE.vld_we && |`FM_ICACHE.vld_req;
+    itlb_chg = freeze_q &&
+        (itlb_tags_q[ItlbEntries-1:0] != `FM_MMU.i_itlb.tags_q[ItlbEntries-1:0] ||
+         itlb_content_q[ItlbEntries-1:0] != `FM_MMU.i_itlb.content_q[ItlbEntries-1:0] ||
+         itlb_plru_q != `FM_MMU.i_itlb.plru_tree_q);
+    dtlb_chg = freeze_q &&
+        (dtlb_tags_q[DtlbEntries-1:0] != `FM_MMU.i_dtlb.tags_q[DtlbEntries-1:0] ||
+         dtlb_content_q[DtlbEntries-1:0] != `FM_MMU.i_dtlb.content_q[DtlbEntries-1:0] ||
+         dtlb_plru_q != `FM_MMU.i_dtlb.plru_tree_q);
+
+    alw_now = '0;
+    alw_now[AmoInv] = dc_tag_wr && dc_amo_inv;
+    alw_now[DcacheFence] = dc_tag_wr && dc_flush;
+    alw_now[IcacheFence] = ic_tag_wr && ic_flush;
+    alw_prev = '0;
+    alw_prev[ItlbFence] = itlb_chg && itlb_flush_q;
+    alw_prev[DtlbFence] = dtlb_chg && dtlb_flush_q;
+
     chg_now = '0;
-    chg_now[DcacheTags] = dc_check && `FM_DCACHE.i_wt_dcache_mem.vld_we &&
-                          |`FM_DCACHE.i_wt_dcache_mem.vld_req && !dc_amo_inv;
-    chg_now[IcacheTags] = freeze && `FM_ICACHE.vld_we && |`FM_ICACHE.vld_req;
+    chg_now[DcacheTags] = dc_tag_wr && !dc_amo_inv && !dc_flush;
+    chg_now[IcacheTags] = ic_tag_wr && !ic_flush;
 
     chg_prev = '0;
     chg_prev[DcacheLfsr] = dc_check_q &&
                            dc_lfsr_q != `FM_DCACHE.i_wt_dcache_missunit.i_lfsr_inv.lfsr_q;
     chg_prev[IcacheLfsr] = freeze_q && ic_lfsr_q != `FM_ICACHE.i_lfsr.lfsr_q;
-    chg_prev[Itlb] = freeze_q &&
-        (itlb_tags_q[ItlbEntries-1:0] != `FM_MMU.i_itlb.tags_q[ItlbEntries-1:0] ||
-         itlb_content_q[ItlbEntries-1:0] != `FM_MMU.i_itlb.content_q[ItlbEntries-1:0] ||
-         itlb_plru_q != `FM_MMU.i_itlb.plru_tree_q);
-    chg_prev[Dtlb] = freeze_q &&
-        (dtlb_tags_q[DtlbEntries-1:0] != `FM_MMU.i_dtlb.tags_q[DtlbEntries-1:0] ||
-         dtlb_content_q[DtlbEntries-1:0] != `FM_MMU.i_dtlb.content_q[DtlbEntries-1:0] ||
-         dtlb_plru_q != `FM_MMU.i_dtlb.plru_tree_q);
+    chg_prev[Itlb] = itlb_chg && !itlb_flush_q;
+    chg_prev[Dtlb] = dtlb_chg && !dtlb_flush_q;
     chg_prev[Bht] = freeze_q && bht_q != `FM_FRONTEND.bht_gen.i_bht.bht_q;
     chg_prev[Btb] = freeze_q && btb_q != `FM_FRONTEND.btb_gen.i_btb.gen_asic_btb.btb_q;
     chg_prev[Ras] = freeze_q && ras_q != `FM_FRONTEND.ras_gen.i_ras.stack_q;
@@ -139,8 +181,8 @@ module cva6_freeze_monitor #(
   int unsigned windows;
   logic [NumStructs-1:0] changed;
   longint unsigned first_chg[NumStructs];
-  bit amo_inv;
-  longint unsigned first_amo_inv;
+  logic [NumAllowed-1:0] allowed;
+  longint unsigned first_alw[NumAllowed];
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
@@ -149,9 +191,10 @@ module cva6_freeze_monitor #(
       dc_check_q <= 1'b0;
       windows    <= 0;
       changed    <= '0;
-      amo_inv    <= 1'b0;
+      allowed    <= '0;
     end else begin
       automatic logic [NumStructs-1:0] chg = changed;
+      automatic logic [NumAllowed-1:0] alw = allowed;
       automatic string msg;
 
       cycle      <= cycle + 1;
@@ -169,6 +212,8 @@ module cva6_freeze_monitor #(
       bht_q          <= `FM_FRONTEND.bht_gen.i_bht.bht_q;
       btb_q          <= `FM_FRONTEND.btb_gen.i_btb.gen_asic_btb.btb_q;
       ras_q          <= `FM_FRONTEND.ras_gen.i_ras.stack_q;
+      itlb_flush_q   <= itlb_flush;
+      dtlb_flush_q   <= dtlb_flush;
 
       if (freeze && !freeze_q) win_first <= cycle;
 
@@ -183,10 +228,17 @@ module cva6_freeze_monitor #(
         end
       end
       changed <= chg;
-      if (dc_check && dc_amo_inv && !amo_inv) begin
-        amo_inv       <= 1'b1;
-        first_amo_inv <= cycle;
+      for (int unsigned i = 0; i < NumAllowed; i++) begin
+        if (alw_prev[i] && !alw[i]) begin
+          alw[i] = 1'b1;
+          first_alw[i] <= cycle - 1;
+        end
+        if (alw_now[i] && !alw[i]) begin
+          alw[i] = 1'b1;
+          first_alw[i] <= cycle;
+        end
       end
+      allowed <= alw;
 
       // The window closed in the previous cycle: its last register changes are checked now
       if (freeze_q && !freeze) begin
@@ -206,11 +258,16 @@ module cva6_freeze_monitor #(
             end
           end
         end
-        if (amo_inv) msg = {msg, $sformatf(" allowed dcache-amo-inv@%0d", first_amo_inv)};
+        for (int unsigned i = 0; i < NumAllowed; i++) begin
+          if (alw[i]) begin
+            msg = {msg, $sformatf(" allowed %s@%0d", allowed_name(i),
+                                  allowed[i] ? first_alw[i] : (alw_now[i] ? cycle : cycle - 1))};
+          end
+        end
         $display("%s", msg);
         windows <= windows + 1;
         changed <= '0;
-        amo_inv <= 1'b0;
+        allowed <= '0;
         if ((chg & mask) != '0 && !warn_only) $fatal(1, "[freeze-mon] frozen state changed");
       end
     end
