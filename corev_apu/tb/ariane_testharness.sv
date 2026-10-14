@@ -663,6 +663,14 @@ module ariane_testharness #(
   `AXI_ASSIGN_FROM_REQ(slave[0], axi_ariane_req)
   `AXI_ASSIGN_TO_RESP(axi_ariane_resp, slave[0])
 
+  // Hidden freeze: check that the frozen caches, TLBs and predictors don't change
+  if (CVA6Cfg.RVHiddenFreeze) begin : gen_freeze_monitor
+    cva6_freeze_monitor i_freeze_monitor (
+      .clk_i  ( clk_i      ),
+      .rst_ni ( ndmreset_n )
+    );
+  end
+
   // -------------
   // Simulation Helper Functions
   // -------------

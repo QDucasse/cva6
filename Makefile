@@ -205,6 +205,7 @@ src :=  $(if $(spike-tandem),verif/tb/core/uvma_core_cntrl_pkg.sv)              
         corev_apu/instr_tracing/rv_tracer-main/include/te_pkg.sv                     \
         corev_apu/instr_tracing/rv_encapsulator-main/src/include/encap_pkg.sv        \
         corev_apu/tb/ariane_testharness.sv                                           \
+        corev_apu/tb/cva6_freeze_monitor.sv                                          \
         corev_apu/tb/ariane_peripherals.sv                                           \
         corev_apu/tb/rvfi_tracer.sv                                                  \
         corev_apu/tb/common/uart.sv                                                  \
