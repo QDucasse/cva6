@@ -332,6 +332,40 @@ package riscv;
   } pte_sv32_t;
 
   // ----------------------
+  // JITDomain
+  // ----------------------
+  // Pending domain entry {valid, label, dom}, as packed in xPPEND and curdom
+  typedef struct packed {
+    logic       valid;
+    logic [8:0] label;
+    logic [2:0] dom;
+  } dpend_t;
+
+  // dstatus; mdstatus has the same layout, with only xPD and xPPEND
+  typedef struct packed {
+    logic [63:21] reserved;
+    logic         schk;    // S-mode accesses are checked too
+    logic [2:0]   drskey;  // key of the DRS pages
+    dpend_t       xppend;  // dpend at the last trap into this mode
+    logic [2:0]   xpd;     // domain at the last trap into this mode
+    logic         en;      // checks and PTE keys enabled
+  } dstatus_t;
+
+  // Per PMP entry: {L, key}
+  typedef struct packed {
+    logic       locked;
+    logic [2:0] key;
+  } dmpcfg_t;
+
+  // dcause subcodes of a domain CFI fault
+  localparam logic [1:0] DCAUSE_LPAD = 2'd1;
+  localparam logic [1:0] DCAUSE_DRS = 2'd2;
+  localparam logic [1:0] DCAUSE_GATE = 2'd3;
+
+  // DRS record: caller domain in bits 63:61, return pc in bits 60:0
+  localparam int unsigned DRS_PC_BITS = 61;
+
+  // ----------------------
   // Exception Cause Codes
   // ----------------------
   localparam logic [XLEN-1:0] INSTR_ADDR_MISALIGNED = 0;
@@ -354,7 +388,11 @@ package riscv;
   localparam logic [XLEN-1:0] LOAD_GUEST_PAGE_FAULT = 21;  // Load guest-page fault
   localparam logic [XLEN-1:0] VIRTUAL_INSTRUCTION = 22;  // virtual instruction
   localparam logic [XLEN-1:0] STORE_GUEST_PAGE_FAULT = 23;  // Store guest-page fault
-  localparam logic [XLEN-1:0] DEBUG_REQUEST = 24;  // Debug request
+  // JITDomain (custom range)
+  localparam logic [XLEN-1:0] DOMAIN_ACCESS_FAULT = 24;  // access denied by the domain rights matrix
+  localparam logic [XLEN-1:0] DOMAIN_CFI_FAULT = 25;  // domain transition fault, subcode in dcause
+  // Debug request: internal encoding only, never written to a cause CSR
+  localparam logic [XLEN-1:0] DEBUG_REQUEST = 63;
 
   localparam int unsigned IRQ_S_SOFT = 1;
   localparam int unsigned IRQ_VS_SOFT = 2;
@@ -646,6 +684,19 @@ package riscv;
     CSR_ICACHE           = 12'h7C0,
     // Accelerator memory consistency (platform specific)
     CSR_ACC_CONS         = 12'h7C2,
+    // JITDomain
+    CSR_DSTATUS          = 12'h5C0,
+    CSR_DRIGHTS0         = 12'h5C1,
+    CSR_DRIGHTS1         = 12'h5C2,
+    CSR_DRIGHTS2         = 12'h5C3,
+    CSR_DTARGET          = 12'h5C4,
+    CSR_DGATE            = 12'h5C5,
+    CSR_DSP              = 12'h5C6,
+    CSR_DCAUSE           = 12'hDC0,
+    CSR_CURDOM           = 12'hCC0,
+    CSR_DMPCFG0          = 12'h7C3,
+    CSR_DMPCFG1          = 12'h7C4,
+    CSR_MDSTATUS         = 12'h7C5,
     // Triggers
     CSR_TSELECT          = 12'h7A0,
     CSR_TDATA1           = 12'h7A1,

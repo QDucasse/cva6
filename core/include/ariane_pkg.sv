@@ -537,7 +537,23 @@ package ariane_pkg;
     SHA512SIG0,
     SHA512SIG1,
     SHA512SUM0,
-    SHA512SUM1
+    SHA512SUM1,
+    // JITDomain typed loads and stores
+    DLB,
+    DLH,
+    DLW,
+    DLD,
+    DLBU,
+    DLHU,
+    DLWU,
+    DSB,
+    DSH,
+    DSW,
+    DSD,
+    // JITDomain transitions
+    DOMCALL,
+    DOMRET,
+    DOMLPAD
   } fu_op;
 
   typedef struct packed {
@@ -873,4 +889,63 @@ package ariane_pkg;
     return (n < 0) ? 0 : n;
   endfunction : avoid_neg
 
+  // ----------------------
+  // JITDomain
+  // ----------------------
+  // Kind of a data access, for the domain check
+  typedef enum logic [1:0] {
+    JD_ORDINARY,  // checked for curdom
+    JD_TYPED,     // dl*/ds*: checked for dtarget[curdom]
+    JD_DRS        // the implicit DRS access of domcall and domret
+  } jd_kind_t;
+
+  // Committed JITDomain state, for the decoder and the access checks.
+  // Unimplemented domains and keys read as zero.
+  typedef struct packed {
+    logic                  en;
+    logic                  schk;
+    logic [2:0]            drskey;
+    logic [2:0]            curdom;
+    riscv::dpend_t         dpend;
+    logic [7:0][7:0][2:0]  drights;  // [domain][key] = {X, W, R}
+    logic [7:0][2:0]       dtarget;  // [domain] = target of its typed accesses
+    logic [7:0][7:0]       dgate;    // [domain][target] = domcall allowed
+    riscv::dmpcfg_t [15:0] dmpcfg;   // [PMP entry]
+  } jd_state_t;
+
+  localparam logic [2:0] JD_RIGHT_R = 3'b001;
+  localparam logic [2:0] JD_RIGHT_W = 3'b010;
+  localparam logic [2:0] JD_RIGHT_X = 3'b100;
+
+  function automatic jd_kind_t jd_kind(fu_op op);
+    case (op)
+      DLB, DLH, DLW, DLD, DLBU, DLHU, DLWU, DSB, DSH, DSW, DSD: return JD_TYPED;
+      DOMCALL, DOMRET: return JD_DRS;
+      default: return JD_ORDINARY;
+    endcase
+  endfunction
+
+  // The base load or store that a typed or DRS access performs
+  function automatic fu_op jd_base_op(fu_op op);
+    case (op)
+      DLB: return LB;
+      DLH: return LH;
+      DLW: return LW;
+      DLD: return LD;
+      DLBU: return LBU;
+      DLHU: return LHU;
+      DLWU: return LWU;
+      DSB: return SB;
+      DSH: return SH;
+      DSW: return SW;
+      DSD: return SD;
+      DOMCALL: return SD;
+      DOMRET: return LD;
+      default: return op;
+    endcase
+  endfunction
+
+  function automatic logic is_jd_transition(fu_op op);
+    return op inside {DOMCALL, DOMRET, DOMLPAD};
+  endfunction
 endpackage
