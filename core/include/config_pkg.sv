@@ -277,6 +277,12 @@ package config_pkg;
     int unsigned SharedTlbDepth;
     // Option to enable Svnapot extension
     bit          SvnapotEn;
+    // JITDomain extension: domains, memory keys, rights matrix and domain transitions
+    bit          JITDomain;
+    // JITDomain number of domains (2, 4 or 8)
+    int unsigned NrDomains;
+    // JITDomain number of memory keys (2, 4 or 8)
+    int unsigned NrKeys;
   } cva6_user_cfg_t;
 
   typedef struct packed {
@@ -363,6 +369,9 @@ package config_pkg;
     int unsigned DataTlbEntries;
     bit unsigned UseSharedTlb;
     bit SvnapotEn;
+    bit JITDomain;
+    int unsigned NrDomains;
+    int unsigned NrKeys;
     int unsigned SharedTlbDepth;
     int unsigned VpnLen;
     int unsigned PtLevels;
@@ -486,6 +495,10 @@ package config_pkg;
     assert (!(Cfg.RVS && !Cfg.SoftwareInterruptEn));
     assert (!(Cfg.RVH && !Cfg.SoftwareInterruptEn));
     assert (!(Cfg.RVZCMT && ~Cfg.MmuPresent));
+    // JITDomain packs the DRS record in 64 bits and has 16 dmpcfg nibbles per CSR
+    assert (!Cfg.JITDomain || (Cfg.IS_XLEN64 && Cfg.NrPMPEntries <= 16));
+    assert (!Cfg.JITDomain || Cfg.NrDomains inside {2, 4, 8});
+    assert (!Cfg.JITDomain || Cfg.NrKeys inside {2, 4, 8});
     // Zcmp is incompatible with Zcd (compressed double-precision FP loads/stores,
     // automatically present whenever both C and D are implemented), due to
     // opcode collisions.

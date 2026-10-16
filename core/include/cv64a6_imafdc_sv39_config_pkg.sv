@@ -75,6 +75,17 @@ package cva6_config_pkg;
 
   localparam CVA6ConfigRvfiTrace = 1;
 
+  // JITDomain, with the number of domains and keys overridable for synthesis sweeps
+`ifndef JITDOMAIN_NR_DOMAINS
+`define JITDOMAIN_NR_DOMAINS 8
+`endif
+`ifndef JITDOMAIN_NR_KEYS
+`define JITDOMAIN_NR_KEYS 8
+`endif
+  localparam CVA6ConfigJITDomain = 1;
+  localparam CVA6ConfigJITDomainNrDomains = `JITDOMAIN_NR_DOMAINS;
+  localparam CVA6ConfigJITDomainNrKeys = `JITDOMAIN_NR_KEYS;
+
   localparam config_pkg::cva6_user_cfg_t cva6_cfg = '{
       XLEN: unsigned'(CVA6ConfigXlen),
       VLEN: unsigned'(64),
@@ -180,6 +191,9 @@ package cva6_config_pkg;
       DataTlbEntries: int'(16),
       UseSharedTlb: bit'(0),
       SvnapotEn: bit'(1),
+      JITDomain: bit'(CVA6ConfigJITDomain),
+      NrDomains: unsigned'(CVA6ConfigJITDomainNrDomains),
+      NrKeys: unsigned'(CVA6ConfigJITDomainNrKeys),
       SharedTlbDepth: int'(64),
       NrLoadPipeRegs: int'(CVA6ConfigNrLoadPipeRegs),
       NrStorePipeRegs: int'(CVA6ConfigNrStorePipeRegs),
