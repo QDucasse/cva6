@@ -189,6 +189,12 @@ module csr_regfile
     output logic [avoid_neg(CVA6Cfg.NrPMPEntries-1):0][CVA6Cfg.PLEN-3:0] pmpaddr_o,
     // TO_BE_COMPLETED - PERF_COUNTERS
     output logic [31:0] mcountinhibit_o,
+    // JITDomain committed state - DECODER, LSU
+    output ariane_pkg::jd_state_t jd_state_o,
+    // JITDomain DRS pointer - LSU
+    output logic [CVA6Cfg.XLEN-1:0] jd_dsp_o,
+    // A dstatus write changes which PTE bits are keys - CONTROLLER
+    output logic jd_flush_tlb_o,
     // RVFI
     output rvfi_probes_csr_t rvfi_csr_o,
     //jvt output
@@ -254,6 +260,74 @@ module csr_regfile
     logic                     scrubEn;
     logic                     cacheEn;
   } dcache_cfg_t;
+
+  // ----------------
+  // JITDomain state
+  // ----------------
+  // Unimplemented domains and keys read as zero: domain and key fields keep
+  // only their low log2(D) and log2(K) bits, and the matrices only their
+  // implemented rows and columns.
+  localparam logic [2:0] JD_DOM_MASK = 3'(CVA6Cfg.NrDomains - 1);
+  localparam logic [2:0] JD_KEY_MASK = 3'(CVA6Cfg.NrKeys - 1);
+
+  function automatic riscv::dpend_t jd_legal_dpend(riscv::dpend_t p);
+    p.dom = p.dom & JD_DOM_MASK;
+    return p;
+  endfunction
+
+  function automatic riscv::dstatus_t jd_legal_dstatus(logic [63:0] w);
+    riscv::dstatus_t d;
+    d          = riscv::dstatus_t'(w);
+    d.reserved = '0;
+    d.xpd      = d.xpd & JD_DOM_MASK;
+    d.xppend   = jd_legal_dpend(d.xppend);
+    d.drskey   = d.drskey & JD_KEY_MASK;
+    return d;
+  endfunction
+
+  // mdstatus holds only MPD and MPPEND
+  function automatic riscv::dstatus_t jd_legal_mdstatus(logic [63:0] w);
+    riscv::dstatus_t d;
+    d        = '0;
+    d.xpd    = w[3:1] & JD_DOM_MASK;
+    d.xppend = jd_legal_dpend(riscv::dpend_t'(w[16:4]));
+    return d;
+  endfunction
+
+  function automatic logic [7:0][7:0][2:0] jd_legal_drights(logic [7:0][7:0][2:0] r);
+    for (int d = 0; d < 8; d++)
+    for (int k = 0; k < 8; k++) if (d >= CVA6Cfg.NrDomains || k >= CVA6Cfg.NrKeys) r[d][k] = '0;
+    return r;
+  endfunction
+
+  function automatic logic [7:0][2:0] jd_legal_dtarget(logic [7:0][2:0] t);
+    for (int d = 0; d < 8; d++) t[d] = (d < CVA6Cfg.NrDomains) ? t[d] & JD_DOM_MASK : '0;
+    return t;
+  endfunction
+
+  function automatic logic [7:0][7:0] jd_legal_dgate(logic [7:0][7:0] g);
+    for (int d = 0; d < 8; d++)
+    for (int t = 0; t < 8; t++) if (d >= CVA6Cfg.NrDomains || t >= CVA6Cfg.NrDomains) g[d][t] = 1'b0;
+    return g;
+  endfunction
+
+  // dtarget resets to the identity
+  function automatic logic [7:0][2:0] jd_dtarget_identity();
+    logic [7:0][2:0] t;
+    for (int d = 0; d < 8; d++) t[d] = 3'(d);
+    return jd_legal_dtarget(t);
+  endfunction
+
+  riscv::dstatus_t jd_dstatus_q, jd_dstatus_d;  // dstatus, with SPD and SPPEND
+  riscv::dstatus_t jd_mdstatus_q, jd_mdstatus_d;  // mdstatus: MPD and MPPEND only
+  logic [7:0][7:0][2:0] jd_drights_q, jd_drights_d;
+  logic [7:0][2:0] jd_dtarget_q, jd_dtarget_d;
+  logic [7:0][7:0] jd_dgate_q, jd_dgate_d;
+  logic [CVA6Cfg.XLEN-1:0] jd_dsp_q, jd_dsp_d;
+  logic [1:0] jd_dcause_q, jd_dcause_d;
+  logic [2:0] jd_curdom_q, jd_curdom_d;
+  riscv::dpend_t jd_dpend_q, jd_dpend_d;
+  riscv::dmpcfg_t [15:0] jd_dmpcfg_q, jd_dmpcfg_d;
 
   // internal signal to keep track of access exceptions
   logic read_access_exception, update_access_exception, privilege_violation;
@@ -886,6 +960,37 @@ module csr_regfile
           read_access_exception = 1'b1;
         end
 
+        // JITDomain
+        riscv::CSR_DSTATUS:
+        if (CVA6Cfg.JITDomain) csr_rdata = CVA6Cfg.XLEN'(jd_dstatus_q);
+        else read_access_exception = 1'b1;
+        riscv::CSR_DRIGHTS0, riscv::CSR_DRIGHTS1, riscv::CSR_DRIGHTS2: begin
+          automatic logic [1:0] index = 2'(csr_addr.address - riscv::CSR_DRIGHTS0);
+          automatic logic [2:0][63:0] rights = jd_drights_q;
+          if (CVA6Cfg.JITDomain) csr_rdata = CVA6Cfg.XLEN'(rights[index]);
+          else read_access_exception = 1'b1;
+        end
+        riscv::CSR_DTARGET:
+        if (CVA6Cfg.JITDomain) csr_rdata = CVA6Cfg.XLEN'(jd_dtarget_q);
+        else read_access_exception = 1'b1;
+        riscv::CSR_DGATE:
+        if (CVA6Cfg.JITDomain) csr_rdata = CVA6Cfg.XLEN'(jd_dgate_q);
+        else read_access_exception = 1'b1;
+        riscv::CSR_DSP:
+        if (CVA6Cfg.JITDomain) csr_rdata = jd_dsp_q;
+        else read_access_exception = 1'b1;
+        riscv::CSR_DCAUSE:
+        if (CVA6Cfg.JITDomain) csr_rdata = CVA6Cfg.XLEN'(jd_dcause_q);
+        else read_access_exception = 1'b1;
+        riscv::CSR_CURDOM:
+        if (CVA6Cfg.JITDomain) csr_rdata = CVA6Cfg.XLEN'({jd_dpend_q, jd_curdom_q});
+        else read_access_exception = 1'b1;
+        riscv::CSR_DMPCFG0:
+        if (CVA6Cfg.JITDomain) csr_rdata = CVA6Cfg.XLEN'(jd_dmpcfg_q);
+        else read_access_exception = 1'b1;
+        riscv::CSR_MDSTATUS:
+        if (CVA6Cfg.JITDomain) csr_rdata = CVA6Cfg.XLEN'(jd_mdstatus_q);
+        else read_access_exception = 1'b1;
         // custom (non RISC-V) cache control
         riscv::CSR_DCACHE: csr_rdata = dcache_q;
         riscv::CSR_ICACHE: csr_rdata = icache_q;
@@ -1121,6 +1226,18 @@ module csr_regfile
     fiom_d     = fiom_q;
     icache_d   = icache_q;
     acc_cons_d = acc_cons_q;
+
+    jd_dstatus_d   = jd_dstatus_q;
+    jd_mdstatus_d  = jd_mdstatus_q;
+    jd_drights_d   = jd_drights_q;
+    jd_dtarget_d   = jd_dtarget_q;
+    jd_dgate_d     = jd_dgate_q;
+    jd_dsp_d       = jd_dsp_q;
+    jd_dcause_d    = jd_dcause_q;
+    jd_curdom_d    = jd_curdom_q;
+    jd_dpend_d     = jd_dpend_q;
+    jd_dmpcfg_d    = jd_dmpcfg_q;
+    jd_flush_tlb_o = 1'b0;
 
     if (CVA6Cfg.RVH) begin
       vstvec_d                 = vstvec_q;
@@ -1917,6 +2034,61 @@ module csr_regfile
 
         riscv::CSR_DCACHE: dcache_d = csr_wdata;  // enable bit
         riscv::CSR_ICACHE: icache_d = {{CVA6Cfg.XLEN - 1{1'b0}}, csr_wdata[0]};  // enable bit
+        // JITDomain: every write changes what the next instructions may do, so it
+        // flushes the pipeline. dstatus.EN also changes which PTE bits are keys,
+        // so a dstatus write flushes the TLBs.
+        riscv::CSR_DSTATUS: begin
+          if (CVA6Cfg.JITDomain) begin
+            jd_dstatus_d   = jd_legal_dstatus(64'(csr_wdata));
+            jd_flush_tlb_o = 1'b1;
+            flush_o        = 1'b1;
+          end else update_access_exception = 1'b1;
+        end
+        riscv::CSR_DRIGHTS0, riscv::CSR_DRIGHTS1, riscv::CSR_DRIGHTS2: begin
+          automatic logic [1:0] index = 2'(csr_addr.address - riscv::CSR_DRIGHTS0);
+          automatic logic [2:0][63:0] rights = jd_drights_q;
+          if (CVA6Cfg.JITDomain) begin
+            rights[index] = 64'(csr_wdata);
+            jd_drights_d  = jd_legal_drights(rights);
+            flush_o       = 1'b1;
+          end else update_access_exception = 1'b1;
+        end
+        riscv::CSR_DTARGET: begin
+          if (CVA6Cfg.JITDomain) begin
+            jd_dtarget_d = jd_legal_dtarget(csr_wdata[23:0]);
+            flush_o      = 1'b1;
+          end else update_access_exception = 1'b1;
+        end
+        riscv::CSR_DGATE: begin
+          if (CVA6Cfg.JITDomain) begin
+            jd_dgate_d = jd_legal_dgate(64'(csr_wdata));
+            flush_o    = 1'b1;
+          end else update_access_exception = 1'b1;
+        end
+        riscv::CSR_DSP: begin
+          if (CVA6Cfg.JITDomain) begin
+            jd_dsp_d = csr_wdata;
+            flush_o  = 1'b1;
+          end else update_access_exception = 1'b1;
+        end
+        // a locked nibble cannot be written until reset
+        riscv::CSR_DMPCFG0: begin
+          if (CVA6Cfg.JITDomain) begin
+            for (int i = 0; i < CVA6Cfg.NrPMPEntries; i++) begin
+              if (!jd_dmpcfg_q[i].locked) begin
+                jd_dmpcfg_d[i].locked = csr_wdata[4*i+3];
+                jd_dmpcfg_d[i].key    = csr_wdata[4*i+:3] & JD_KEY_MASK;
+              end
+            end
+            flush_o = 1'b1;
+          end else update_access_exception = 1'b1;
+        end
+        riscv::CSR_MDSTATUS: begin
+          if (CVA6Cfg.JITDomain) begin
+            jd_mdstatus_d = jd_legal_mdstatus(64'(csr_wdata));
+            flush_o       = 1'b1;
+          end else update_access_exception = 1'b1;
+        end
         riscv::CSR_ACC_CONS: begin
           if (CVA6Cfg.EnableAccelerator) begin
             acc_cons_d = {{CVA6Cfg.XLEN - 1{1'b0}}, csr_wdata[0]};  // enable bit
@@ -2836,6 +3008,45 @@ module csr_regfile
 
   // determine if mprv needs to be considered if in debug mode
   assign mprv = (CVA6Cfg.DebugEn && debug_mode_q && !dcsr_q.mprven) ? 1'b0 : mstatus_q.mprv;
+
+  assign jd_state_o = '{
+          en: CVA6Cfg.JITDomain && jd_dstatus_q.en,
+          schk: jd_dstatus_q.schk,
+          drskey: jd_dstatus_q.drskey,
+          curdom: jd_curdom_q,
+          dpend: jd_dpend_q,
+          drights: jd_drights_q,
+          dtarget: jd_dtarget_q,
+          dgate: jd_dgate_q,
+          dmpcfg: jd_dmpcfg_q
+      };
+  assign jd_dsp_o = jd_dsp_q;
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : jd_regs
+    if (~rst_ni) begin
+      jd_dstatus_q  <= '0;
+      jd_mdstatus_q <= '0;
+      jd_drights_q  <= '0;
+      jd_dtarget_q  <= jd_dtarget_identity();
+      jd_dgate_q    <= '0;
+      jd_dsp_q      <= '0;
+      jd_dcause_q   <= '0;
+      jd_curdom_q   <= '0;
+      jd_dpend_q    <= '0;
+      jd_dmpcfg_q   <= '0;
+    end else if (CVA6Cfg.JITDomain) begin
+      jd_dstatus_q  <= jd_dstatus_d;
+      jd_mdstatus_q <= jd_mdstatus_d;
+      jd_drights_q  <= jd_drights_d;
+      jd_dtarget_q  <= jd_dtarget_d;
+      jd_dgate_q    <= jd_dgate_d;
+      jd_dsp_q      <= jd_dsp_d;
+      jd_dcause_q   <= jd_dcause_d;
+      jd_curdom_q   <= jd_curdom_d;
+      jd_dpend_q    <= jd_dpend_d;
+      jd_dmpcfg_q   <= jd_dmpcfg_d;
+    end
+  end
   assign debug_mode_o = CVA6Cfg.DebugEn ? debug_mode_q : 1'b0;
   assign single_step_o = CVA6Cfg.DebugEn ? dcsr_q.step : 1'b0;
   assign mcountinhibit_o = {{29 - MHPMCounterNum{1'b0}}, mcountinhibit_q};

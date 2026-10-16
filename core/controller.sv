@@ -67,6 +67,8 @@ module controller
     input bp_resolve_t resolved_branch_i,
     // We got an instruction which altered the CSR, flush the pipeline - CSR_REGFILE
     input logic flush_csr_i,
+    // A JITDomain CSR write also flushes the TLBs - CSR_REGFILE
+    input logic flush_tlb_csr_i,
     // fence.i in - ACC_DISPATCH
     input logic fence_i_i,
     // fence in - ACC_DISPATCH
@@ -221,6 +223,7 @@ module controller
       flush_unissued_instr_o = 1'b1;
       flush_id_o             = 1'b1;
       flush_ex_o             = 1'b1;
+      if (flush_tlb_csr_i) flush_tlb_o = 1'b1;
     end else if (CVA6Cfg.RVA && flush_commit_i) begin
       set_pc_commit_o        = 1'b1;
       flush_if_o             = 1'b1;

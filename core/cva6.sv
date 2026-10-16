@@ -646,6 +646,10 @@ module cva6
   // --------------
   logic set_pc_ctrl_pcgen;
   logic flush_csr_ctrl;
+  // JITDomain
+  ariane_pkg::jd_state_t jd_state;
+  logic [CVA6Cfg.XLEN-1:0] jd_dsp;
+  logic jd_flush_tlb_csr_ctrl;
   logic flush_unissued_instr_ctrl_id;
   logic flush_ctrl_if;
   logic flush_ctrl_id;
@@ -1299,6 +1303,9 @@ module cva6
       .pmpcfg_o                           (pmpcfg),
       .pmpaddr_o                          (pmpaddr),
       .mcountinhibit_o                    (mcountinhibit_csr_perf),
+      .jd_state_o                         (jd_state),
+      .jd_dsp_o                           (jd_dsp),
+      .jd_flush_tlb_o                     (jd_flush_tlb_csr_ctrl),
       .mcbie_o                            (mcbie),
       .scbie_o                            (scbie),
       .hcbie_o                            (hcbie),
@@ -1414,6 +1421,7 @@ module cva6
       .set_debug_pc_i        (set_debug_pc),
       .resolved_branch_i     (resolved_branch),
       .flush_csr_i           (flush_csr_ctrl),
+      .flush_tlb_csr_i       (jd_flush_tlb_csr_ctrl),
       .fence_i_i             (fence_i_commit_controller),
       .fence_i               (fence_commit_controller),
       .sfence_vma_i          (sfence_vma_commit_controller),
