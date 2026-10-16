@@ -68,6 +68,7 @@ module rvfi_tracer #(
   string cause;
   logic[31:0] end_of_test_q;
   logic[31:0] end_of_test_d;
+  logic[15:0] htif_dev_cmd;
 
   function automatic logic fp_instr_writes_gpr(logic [31:0] insn);
     logic [6:0] opcode;
@@ -159,8 +160,18 @@ module rvfi_tracer #(
         // Handle memory writes (including for AMO instructions which have both rd and mem_wmask)
         if (rvfi_i[i].mem_wmask != 0) begin
           $fwrite(f, " mem 0x%h 0x%h", rvfi_i[i].mem_addr, rvfi_i[i].mem_wdata);
+          // HTIF device and command, in the top 16 bits of tohost on RV64
+          htif_dev_cmd = CVA6Cfg.XLEN == 64 ? rvfi_i[i].mem_wdata[CVA6Cfg.XLEN-1-:16] : '0;
+          // Console: device 1, command 1 (putchar)
           if (TOHOST_ADDR != '0 &&
               rvfi_i[i].mem_paddr == TOHOST_ADDR &&
+              htif_dev_cmd == 16'h0101) begin
+            $write("%c", rvfi_i[i].mem_wdata[7:0]);
+            $fflush();
+          end
+          if (TOHOST_ADDR != '0 &&
+              rvfi_i[i].mem_paddr == TOHOST_ADDR &&
+              htif_dev_cmd == '0 &&
               rvfi_i[i].mem_wdata[0] == 1'b1) begin
             end_of_test_q <= rvfi_i[i].mem_wdata[31:0];
             $display("*** [rvfi_tracer] INFO: Simulation terminated after %d cycles!\n", cycles);
