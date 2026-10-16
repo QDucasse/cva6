@@ -1801,7 +1801,9 @@ module csr_regfile
                              ((CVA6Cfg.RVH ? 1 : 0)  << riscv::INSTR_GUEST_PAGE_FAULT) |
                              ((CVA6Cfg.RVH ? 1 : 0)  << riscv::LOAD_GUEST_PAGE_FAULT) |
                              ((CVA6Cfg.RVH ? 1 : 0)  << riscv::VIRTUAL_INSTRUCTION) |
-                             ((CVA6Cfg.RVH ? 1 : 0)  << riscv::STORE_GUEST_PAGE_FAULT);
+                             ((CVA6Cfg.RVH ? 1 : 0)  << riscv::STORE_GUEST_PAGE_FAULT) |
+                             ((CVA6Cfg.JITDomain ? 1 : 0)  << riscv::DOMAIN_ACCESS_FAULT) |
+                             ((CVA6Cfg.JITDomain ? 1 : 0)  << riscv::DOMAIN_CFI_FAULT);
             medeleg_d = (medeleg_q & ~mask) | (csr_wdata & mask);
           end else begin
             update_access_exception = 1'b1;
@@ -2416,6 +2418,28 @@ module csr_regfile
       if (CVA6Cfg.RVH) begin
         v_d = trap_to_v;
       end
+
+      // JITDomain: save {curdom, dpend} in xPD/xPPEND and enter DOM0. A domain
+      // CFI fault carries its subcode in tval; xtval gets the faulting pc.
+      if (CVA6Cfg.JITDomain) begin
+        if (CVA6Cfg.RVS && trap_to_priv_lvl == riscv::PRIV_LVL_S) begin
+          jd_dstatus_d.xpd    = jd_curdom_q;
+          jd_dstatus_d.xppend = jd_dpend_q;
+        end else begin
+          jd_mdstatus_d.xpd    = jd_curdom_q;
+          jd_mdstatus_d.xppend = jd_dpend_q;
+        end
+        jd_curdom_d = '0;
+        jd_dpend_d  = '0;
+        if (ex_i.cause == riscv::DOMAIN_CFI_FAULT) begin
+          jd_dcause_d = ex_i.tval[1:0];
+          if (CVA6Cfg.RVS && trap_to_priv_lvl == riscv::PRIV_LVL_S) begin
+            stval_d = {{CVA6Cfg.XLEN - CVA6Cfg.VLEN{pc_i[CVA6Cfg.VLEN-1]}}, pc_i};
+          end else if (CVA6Cfg.TvalEn) begin
+            mtval_d = {{CVA6Cfg.XLEN - CVA6Cfg.VLEN{pc_i[CVA6Cfg.VLEN-1]}}, pc_i};
+          end
+        end
+      end
     end
 
     // ------------------------------
@@ -2583,6 +2607,13 @@ module csr_regfile
       // set mpie to 1
       mstatus_d.mpie = 1'b1;
       if (mstatus_q.mpp != riscv::PRIV_LVL_M) mstatus_d.mprv = 1'b0;
+      // JITDomain: restore {curdom, dpend}, then clear MPPEND so that a second
+      // mret without a trap cannot restore a stale pending entry
+      if (CVA6Cfg.JITDomain) begin
+        jd_curdom_d          = jd_mdstatus_q.xpd;
+        jd_dpend_d           = jd_mdstatus_q.xppend;
+        jd_mdstatus_d.xppend = '0;
+      end
       if (CVA6Cfg.RVH) begin
         // MPV is ignored when returning to M-mode.
         v_d = (mstatus_q.mpp == riscv::PRIV_LVL_M) ? 1'b0 : mstatus_q.mpv;
@@ -2603,6 +2634,12 @@ module csr_regfile
       // set spie to 1
       mstatus_d.spie = 1'b1;
       mstatus_d.mprv = 1'b0;
+      // JITDomain: as for mret, from SPD/SPPEND
+      if (CVA6Cfg.JITDomain) begin
+        jd_curdom_d         = jd_dstatus_q.xpd;
+        jd_dpend_d          = jd_dstatus_q.xppend;
+        jd_dstatus_d.xppend = '0;
+      end
       if (CVA6Cfg.RVH) begin
         // set virtualization mode
         v_d           = hstatus_q.spv;
