@@ -64,6 +64,11 @@ module pmp_data_if
   logic data_pmp_locked;
   logic [2:0] data_need;
   logic data_dom_allow;
+  logic if_pmp_match;
+  logic [5:0] if_pmp_idx;
+  logic [2:0] if_key;
+  logic if_pmp_locked;
+  logic if_dom_allow;
 
   // For exception tval reporting, use the virtual address and resize it
   if (CVA6Cfg.VLEN >= CVA6Cfg.XLEN) begin
@@ -112,6 +117,17 @@ module pmp_data_if
           end
         end
       end
+      // JITDomain: after the page and access faults of the fetch
+      if (CVA6Cfg.JITDomain && !icache_areq_o.fetch_exception.valid && !if_dom_allow) begin
+        icache_areq_o.fetch_exception.cause = riscv::DOMAIN_ACCESS_FAULT;
+        icache_areq_o.fetch_exception.valid = 1'b1;
+        if (CVA6Cfg.TvalEn) icache_areq_o.fetch_exception.tval = fetch_vaddr_xlen;
+        if (CVA6Cfg.RVH) begin
+          icache_areq_o.fetch_exception.tval2 = '0;
+          icache_areq_o.fetch_exception.tinst = '0;
+          icache_areq_o.fetch_exception.gva   = v_i;
+        end
+      end
     end
   end
 
@@ -127,8 +143,26 @@ module pmp_data_if
       .conf_addr_i  (pmpaddr_i),
       .conf_i       (pmpcfg_i),
       .allow_o      (pmp_if_allow),
-      .match_o      (),
-      .match_idx_o  ()
+      .match_o      (if_pmp_match),
+      .match_idx_o  (if_pmp_idx)
+  );
+
+  // Fetch domain check, for the pending domain when an entry is pending
+  assign if_key = if_pmp_match ? jd_state_i.dmpcfg[if_pmp_idx[3:0]].key : 3'b000;
+  assign if_pmp_locked = if_pmp_match && pmpcfg_i[if_pmp_idx].locked;
+
+  dom_check #(
+      .CVA6Cfg(CVA6Cfg)
+  ) i_dom_check_if (
+      .state_i     (jd_state_i),
+      .debug_mode_i(debug_mode_i),
+      .priv_lvl_i  (priv_lvl_i),
+      .fetch_i     (1'b1),
+      .kind_i      (JD_ORDINARY),
+      .need_i      (JD_RIGHT_X),
+      .key_i       (if_key),
+      .pmp_locked_i(if_pmp_locked),
+      .allow_o     (if_dom_allow)
   );
 
   //-----------------------

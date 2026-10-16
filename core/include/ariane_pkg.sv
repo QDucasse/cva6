@@ -693,11 +693,12 @@ package ariane_pkg;
     riscv::pte_sv32_t content;
   } tlb_update_sv32_t;
 
-  typedef enum logic [1:0] {
+  typedef enum logic [2:0] {
     FE_NONE,
     FE_INSTR_ACCESS_FAULT,
     FE_INSTR_PAGE_FAULT,
-    FE_INSTR_GUEST_PAGE_FAULT
+    FE_INSTR_GUEST_PAGE_FAULT,
+    FE_DOMAIN_ACCESS_FAULT
   } frontend_exception_t;
 
   // AMO request going to cache. this request is unconditionally valid as soon

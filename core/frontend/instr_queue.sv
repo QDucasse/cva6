@@ -349,6 +349,8 @@ module instr_queue
         if (idx_ds[0][i]) begin
           if (instr_data_out[i].ex == ariane_pkg::FE_INSTR_ACCESS_FAULT) begin
             fetch_entry_o[0].ex.cause = riscv::INSTR_ACCESS_FAULT;
+          end else if (instr_data_out[i].ex == ariane_pkg::FE_DOMAIN_ACCESS_FAULT) begin
+            fetch_entry_o[0].ex.cause = riscv::DOMAIN_ACCESS_FAULT;
           end else if (CVA6Cfg.RVH && instr_data_out[i].ex == ariane_pkg::FE_INSTR_GUEST_PAGE_FAULT) begin
             fetch_entry_o[0].ex.cause = riscv::INSTR_GUEST_PAGE_FAULT;
           end else begin
@@ -374,6 +376,8 @@ module instr_queue
           if (idx_ds[1][i]) begin
             if (instr_data_out[i].ex == ariane_pkg::FE_INSTR_ACCESS_FAULT) begin
               fetch_entry_o[NID].ex.cause = riscv::INSTR_ACCESS_FAULT;
+            end else if (instr_data_out[i].ex == ariane_pkg::FE_DOMAIN_ACCESS_FAULT) begin
+              fetch_entry_o[NID].ex.cause = riscv::DOMAIN_ACCESS_FAULT;
             end else begin
               fetch_entry_o[NID].ex.cause = riscv::INSTR_PAGE_FAULT;
             end
@@ -406,6 +410,8 @@ module instr_queue
       fetch_entry_o[0].ex.valid = instr_data_out[0].ex != ariane_pkg::FE_NONE;
       if (instr_data_out[0].ex == ariane_pkg::FE_INSTR_ACCESS_FAULT) begin
         fetch_entry_o[0].ex.cause = riscv::INSTR_ACCESS_FAULT;
+      end else if (instr_data_out[0].ex == ariane_pkg::FE_DOMAIN_ACCESS_FAULT) begin
+        fetch_entry_o[0].ex.cause = riscv::DOMAIN_ACCESS_FAULT;
       end else begin
         fetch_entry_o[0].ex.cause = riscv::INSTR_PAGE_FAULT;
       end
