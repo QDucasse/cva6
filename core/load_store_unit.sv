@@ -166,6 +166,10 @@ module load_store_unit
     input riscv::pmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0]                   pmpcfg_i,
     // PMP address - CSR_REGFILE
     input logic           [avoid_neg(CVA6Cfg.NrPMPEntries-1):0][CVA6Cfg.PLEN-3:0] pmpaddr_i,
+    // Debug mode - CSR_REGFILE
+    input logic debug_mode_i,
+    // JITDomain committed state - CSR_REGFILE
+    input jd_state_t jd_state_i,
 
     // RVFI information - RVFI
     output lsu_ctrl_t                    rvfi_lsu_ctrl_o,
@@ -260,6 +264,23 @@ module load_store_unit
   logic [CVA6Cfg.PPNW-1:0] satp_ppn[2:0];
   logic [CVA6Cfg.ASID_WIDTH-1:0] asid[2:0], asid_to_be_flushed[1:0];
   logic [CVA6Cfg.VLEN-1:0] vaddr_to_be_flushed[1:0];
+
+  // JITDomain: the base operation of a typed or DRS access, and the kind and
+  // AMO-ness of the access being translated, registered like the MMU request
+  fu_op lsu_op_i;
+  jd_kind_t pmp_jd_kind_q;
+  logic pmp_jd_amo_q;
+  assign lsu_op_i = CVA6Cfg.JITDomain ? jd_base_op(fu_data_i.operation) : fu_data_i.operation;
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (~rst_ni) begin
+      pmp_jd_kind_q <= JD_ORDINARY;
+      pmp_jd_amo_q  <= 1'b0;
+    end else begin
+      pmp_jd_kind_q <= lsu_ctrl.jd_kind;
+      pmp_jd_amo_q  <= is_amo(lsu_ctrl.operation);
+    end
+  end
 
   // -------------------
   // MMU e.g.: TLBs/PTW
@@ -422,7 +443,11 @@ module load_store_unit
       .ld_st_priv_lvl_i    (ld_st_priv_lvl_i),
       .ld_st_v_i           (ld_st_v_i),
       .pmpcfg_i            (pmpcfg_i),
-      .pmpaddr_i           (pmpaddr_i)
+      .pmpaddr_i           (pmpaddr_i),
+      .jd_state_i          (jd_state_i),
+      .debug_mode_i        (debug_mode_i),
+      .lsu_jd_kind_i       (pmp_jd_kind_q),
+      .lsu_jd_amo_i        (pmp_jd_amo_q)
   );
 
   // ------------------
@@ -732,9 +757,9 @@ module load_store_unit
   // and we can always generate the byte enable from the address at hand
 
   if (CVA6Cfg.IS_XLEN64) begin : gen_8b_be
-    assign be_i = be_gen(vaddr_i[2:0], extract_transfer_size(fu_data_i.operation));
+    assign be_i = be_gen(vaddr_i[2:0], extract_transfer_size(lsu_op_i));
   end else begin : gen_4b_be
-    assign be_i = be_gen_32(vaddr_i[1:0], extract_transfer_size(fu_data_i.operation));
+    assign be_i = be_gen_32(vaddr_i[1:0], extract_transfer_size(lsu_op_i));
   end
 
   // ------------------------
@@ -893,10 +918,11 @@ module load_store_unit
     fu_data_i.operand_b,
     be_i,
     fu_data_i.fu,
-    fu_data_i.operation,
+    lsu_op_i,
     fu_data_i.trans_id,
     speculative_load_i,
-    1'b0
+    1'b0,
+    CVA6Cfg.JITDomain ? jd_kind(fu_data_i.operation) : JD_ORDINARY
   };
 
   lsu_bypass #(

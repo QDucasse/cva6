@@ -259,7 +259,9 @@ module cva6_ptw
       // Configuration
       .conf_addr_i  (pmpaddr_i),
       .conf_i       (pmpcfg_i),
-      .allow_o      (allow_access)
+      .allow_o      (allow_access),
+      .match_o      (),
+      .match_idx_o  ()
   );
 
 

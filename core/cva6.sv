@@ -169,6 +169,7 @@ module cva6
       logic [CVA6Cfg.TRANS_ID_BITS-1:0] trans_id;
       logic                             is_speculative_load;
       logic                             is_speculative_load_miss;
+      ariane_pkg::jd_kind_t             jd_kind;
     },
 
 
@@ -1009,6 +1010,7 @@ module cva6
       .clk_i(clk_i),
       .rst_ni(rst_ni),
       .debug_mode_i(debug_mode),
+      .jd_state_i(jd_state),
       .flush_i(flush_ctrl_ex),
       .rs1_forwarding_i(rs1_forwarding_id_ex),
       .rs2_forwarding_i(rs2_forwarding_id_ex),

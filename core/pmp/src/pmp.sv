@@ -25,7 +25,10 @@ module pmp
     input logic [avoid_neg(CVA6Cfg.NrPMPEntries-1):0][CVA6Cfg.PLEN-3:0] conf_addr_i,
     input riscv::pmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] conf_i,
     // Output
-    output logic allow_o
+    output logic allow_o,
+    // First entry that matches the address, whatever the privilege level
+    output logic match_o,
+    output logic [5:0] match_idx_o
 );
   // if there are no PMPs we can always grant the access.
   if (CVA6Cfg.NrPMPEntries > 0) begin : gen_pmp
@@ -70,6 +73,21 @@ module pmp
           allow_o = 1'b0;
       end
     end
-  end else assign allow_o = 1'b1;
+
+    always_comb begin
+      match_o     = 1'b0;
+      match_idx_o = '0;
+      for (int i = CVA6Cfg.NrPMPEntries - 1; i >= 0; i--) begin
+        if (match[i]) begin
+          match_o     = 1'b1;
+          match_idx_o = 6'(i);
+        end
+      end
+    end
+  end else begin
+    assign allow_o     = 1'b1;
+    assign match_o     = 1'b0;
+    assign match_idx_o = '0;
+  end
 
 endmodule

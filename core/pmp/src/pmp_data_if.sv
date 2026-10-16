@@ -38,7 +38,12 @@ module pmp_data_if
     input logic ld_st_v_i,
     // PMP
     input riscv::pmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0] pmpcfg_i,
-    input logic [avoid_neg(CVA6Cfg.NrPMPEntries-1):0][CVA6Cfg.PLEN-3:0] pmpaddr_i
+    input logic [avoid_neg(CVA6Cfg.NrPMPEntries-1):0][CVA6Cfg.PLEN-3:0] pmpaddr_i,
+    // JITDomain
+    input jd_state_t jd_state_i,
+    input logic debug_mode_i,
+    input jd_kind_t lsu_jd_kind_i,  // kind of the data access
+    input logic lsu_jd_amo_i  // LR, SC or AMO: needs R and W
 );
   // virtual address causing the exception
   logic [CVA6Cfg.XLEN-1:0] fetch_vaddr_xlen, lsu_vaddr_xlen;
@@ -51,6 +56,14 @@ module pmp_data_if
   riscv::pmp_access_t pmp_access_type;
 
   logic no_locked_data, no_locked_if;
+
+  // JITDomain: key and lock of the first PMP entry that matches
+  logic data_pmp_match;
+  logic [5:0] data_pmp_idx;
+  logic [2:0] data_key;
+  logic data_pmp_locked;
+  logic [2:0] data_need;
+  logic data_dom_allow;
 
   // For exception tval reporting, use the virtual address and resize it
   if (CVA6Cfg.VLEN >= CVA6Cfg.XLEN) begin
@@ -113,7 +126,9 @@ module pmp_data_if
       // Configuration
       .conf_addr_i  (pmpaddr_i),
       .conf_i       (pmpcfg_i),
-      .allow_o      (pmp_if_allow)
+      .allow_o      (pmp_if_allow),
+      .match_o      (),
+      .match_idx_o  ()
   );
 
   //-----------------------
@@ -155,6 +170,24 @@ module pmp_data_if
         lsu_exception_o.gva   = ld_st_v_i;
       end
     end
+
+    // JITDomain: the domain check ranks after the page and access faults of the
+    // same access. For the implicit DRS access of domcall/domret, a domain or
+    // access fault is a domain CFI fault (DRS), with its subcode in tval; page
+    // faults stay page faults.
+    if (CVA6Cfg.JITDomain && lsu_valid_i) begin
+      if (!lsu_exception_o.valid && !data_dom_allow) begin
+        lsu_exception_o.valid = 1'b1;
+        lsu_exception_o.cause = riscv::DOMAIN_ACCESS_FAULT;
+        if (CVA6Cfg.TvalEn) lsu_exception_o.tval = lsu_vaddr_xlen;
+      end
+      if (lsu_jd_kind_i == JD_DRS && lsu_exception_o.valid &&
+          lsu_exception_o.cause inside {riscv::LD_ACCESS_FAULT, riscv::ST_ACCESS_FAULT,
+                                        riscv::DOMAIN_ACCESS_FAULT}) begin
+        lsu_exception_o.cause = riscv::DOMAIN_CFI_FAULT;
+        lsu_exception_o.tval  = CVA6Cfg.XLEN'(riscv::DCAUSE_DRS);
+      end
+    end
   end
 
   // Load/store PMP check
@@ -167,7 +200,29 @@ module pmp_data_if
       // Configuration
       .conf_addr_i  (pmpaddr_i),
       .conf_i       (pmpcfg_i),
-      .allow_o      (data_allow_o)
+      .allow_o      (data_allow_o),
+      .match_o      (data_pmp_match),
+      .match_idx_o  (data_pmp_idx)
+  );
+
+  // Load/store domain check
+  assign data_key = data_pmp_match ? jd_state_i.dmpcfg[data_pmp_idx[3:0]].key : 3'b000;
+  assign data_pmp_locked = data_pmp_match && pmpcfg_i[data_pmp_idx].locked;
+  assign data_need = lsu_jd_amo_i ? (JD_RIGHT_R | JD_RIGHT_W) :
+                     lsu_is_store_i ? JD_RIGHT_W : JD_RIGHT_R;
+
+  dom_check #(
+      .CVA6Cfg(CVA6Cfg)
+  ) i_dom_check_data (
+      .state_i     (jd_state_i),
+      .debug_mode_i(debug_mode_i),
+      .priv_lvl_i  (ld_st_priv_lvl_i),
+      .fetch_i     (1'b0),
+      .kind_i      (lsu_jd_kind_i),
+      .need_i      (data_need),
+      .key_i       (data_key),
+      .pmp_locked_i(data_pmp_locked),
+      .allow_o     (data_dom_allow)
   );
 
   // ----------------

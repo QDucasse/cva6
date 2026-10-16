@@ -244,6 +244,7 @@ sources:
       # Physical Memory Protection
       - core/pmp/src/pmp.sv
       - core/pmp/src/pmp_entry.sv
+      - core/pmp/src/dom_check.sv
       - core/pmp/src/pmp_data_if.sv
 
       - include_dirs:
