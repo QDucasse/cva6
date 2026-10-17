@@ -467,7 +467,8 @@ module cva6_rvfi
     end else if (lsu_wmask != 0) begin
       mem_n[lsu_addr_trans_id].lsu_addr  = lsu_addr;
       mem_n[lsu_addr_trans_id].lsu_wmask = lsu_wmask;
-      mem_n[lsu_addr_trans_id].lsu_wdata = wbdata[STORE_WB];
+      // the store data itself: a domcall writes back its jump target instead
+      mem_n[lsu_addr_trans_id].lsu_wdata = instr.lsu_ctrl_data;
     end
   end
 

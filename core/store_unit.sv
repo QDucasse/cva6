@@ -119,8 +119,14 @@ module store_unit
     return data_tmp[CVA6Cfg.XLEN-1:0];
   endfunction
 
-  // it doesn't matter what we are writing back as stores don't return anything
-  assign result_o = lsu_ctrl_i.data;
+  // it doesn't matter what we are writing back as stores don't return anything,
+  // except for domcall, which writes back {dom, label, jump target} for the
+  // commit stage. Like the transaction id, the result is the one of the
+  // request taken in the previous cycle.
+  logic [CVA6Cfg.XLEN-1:0] result_n, result_q;
+  assign result_n = (CVA6Cfg.JITDomain && lsu_ctrl_i.jd_kind == ariane_pkg::JD_DRS) ?
+      lsu_ctrl_i.jd_result : lsu_ctrl_i.data;
+  assign result_o = CVA6Cfg.JITDomain ? result_q : lsu_ctrl_i.data;
 
   enum logic [1:0] {
     IDLE,
@@ -407,6 +413,7 @@ module store_unit
       st_data_q      <= '0;
       st_data_size_q <= '0;
       trans_id_q     <= '0;
+      result_q       <= '0;
       amo_op_q       <= AMO_NONE;
       cbo_op_q       <= ariane_pkg::CBO_NONE;
     end else begin
@@ -414,6 +421,7 @@ module store_unit
       st_be_q        <= st_be_n;
       st_data_q      <= st_data_n;
       trans_id_q     <= trans_id_n;
+      result_q       <= result_n;
       st_data_size_q <= st_data_size_n;
       amo_op_q       <= amo_op_d;
       cbo_op_q       <= cbo_op_d;

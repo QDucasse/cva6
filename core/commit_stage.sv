@@ -133,6 +133,24 @@ module commit_stage
 
   exception_t ex_next_instr_d, ex_next_instr_q;
 
+  // JITDomain: a domret whose record names an unimplemented domain is a
+  // domain CFI fault (DRS), found once the record is loaded
+  exception_t commit_ex0;
+  always_comb begin
+    commit_ex0 = commit_instr_i[0].ex;
+    if (CVA6Cfg.JITDomain && CVA6Cfg.NrDomains < 8 && commit_instr_i[0].op == DOMRET &&
+        !commit_instr_i[0].ex.valid &&
+        32'(64'(commit_instr_i[0].result) >> riscv::DRS_PC_BITS) >= CVA6Cfg.NrDomains) begin
+      commit_ex0.valid = 1'b1;
+      commit_ex0.cause = riscv::DOMAIN_CFI_FAULT;
+      commit_ex0.tval  = CVA6Cfg.XLEN'(riscv::DCAUSE_DRS);
+    end
+  end
+
+  // domcall writes rd <- pc + 4; its writeback holds the jump target instead
+  logic [CVA6Cfg.VLEN-1:0] commit_link0;
+  assign commit_link0 = commit_instr_i[0].pc + 4;
+
   logic instr_0_is_amo;
   logic [CVA6Cfg.NrCommitPorts-1:0] commit_macro_ack;
   assign instr_0_is_amo = is_amo(commit_instr_i[0].op);
@@ -155,6 +173,8 @@ module commit_stage
     commit_csr_o = 1'b0;
     // amos will commit on port 0
     wdata_o[0] = (CVA6Cfg.RVA && amo_resp_i.ack) ? amo_resp_i.result[CVA6Cfg.XLEN-1:0] : commit_instr_i[0].result;
+    if (CVA6Cfg.JITDomain && commit_instr_i[0].op == DOMCALL)
+      wdata_o[0] = {{CVA6Cfg.XLEN - CVA6Cfg.VLEN{commit_link0[CVA6Cfg.VLEN-1]}}, commit_link0};
     csr_op_o = ADD;  // this corresponds to a CSR NOP
     csr_wdata_o = {CVA6Cfg.XLEN{1'b0}};
     fence_i_o = 1'b0;
@@ -168,7 +188,7 @@ module commit_stage
     // we do not commit the instruction yet if we requested a halt
     if (commit_instr_i[0].valid && !halt_i) begin
       // we will not commit the instruction if we took an exception
-      if (commit_instr_i[0].ex.valid
+      if (commit_ex0.valid
       || ((CVA6Cfg.SdtrigEtrigger || CVA6Cfg.SdtrigItrigger) && sdtrig_commit_std_exception_valid_i || (CVA6Cfg.SdtrigIcount && sdtrig_commit_icount_valid_i && sdtrig_commit_icount_nr_instr_i == 0))) begin
         // However we can drop it (with its exception)
         if (commit_drop_i[0]) begin
@@ -330,6 +350,9 @@ module commit_stage
                                 && !(commit_instr_i[0].fu inside {CSR})
                                 && !flush_dcache_i
                                 && !(CVA6Cfg.RVA && instr_0_is_amo)
+                                // a domain transition redirects and flushes after it commits
+                                && !(CVA6Cfg.JITDomain && is_jd_transition(commit_instr_i[0].op))
+                                && !(CVA6Cfg.JITDomain && is_jd_transition(commit_instr_i[1].op))
                                 && !single_step_i
                                 && !(CVA6Cfg.Sdtrig && sdtrig_commit_icount_valid_i && sdtrig_commit_icount_nr_instr_i < CVA6Cfg.NrCommitPorts)
                                 && (CVA6Cfg.SdtrigMcontrol6LoadData ? !commit_instr_i[0].ex.timing : !CVA6Cfg.SdtrigMcontrol6LoadData)) begin
@@ -424,8 +447,8 @@ module commit_stage
       // ------------------------
       // but we give precedence to exceptions which happened earlier e.g.: instruction page
       // faults for example
-      if (commit_instr_i[0].ex.valid) begin
-        exception_o = commit_instr_i[0].ex;
+      if (commit_ex0.valid) begin
+        exception_o = commit_ex0;
       end
     end
     // Don't take any exceptions iff:

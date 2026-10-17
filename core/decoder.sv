@@ -82,6 +82,8 @@ module decoder
     input logic vtw_i,
     // Trap sret - CSR_REGFILE
     input logic tsr_i,
+    // JITDomain committed state - CSR_REGFILE
+    input ariane_pkg::jd_state_t jd_state_i,
     // Hypervisor user mode - CSR_REGFILE
     input logic hu_i,
     // machine-mode cache block invalidate enable - CSR_REGFILE
@@ -112,6 +114,12 @@ module decoder
   logic virtual_illegal_instr;
   // this instruction is an environment call (ecall), it is handled like an exception
   logic ecall;
+  // JITDomain: the instruction is not the domlpad that a pending entry needs,
+  // or a domcall that dgate does not allow
+  logic jd_lpad_fault;
+  logic jd_gate_fault;
+  // domcall: the LSU gets {dom, label, pc + 4} as its immediate
+  logic jd_domcall;
   // this instruction is a software break-point
   logic ebreak;
   // this instruction needs floating-point rounding-mode verification
@@ -201,6 +209,8 @@ module decoder
     ebreak                                 = 1'b0;
     check_fprm                             = 1'b0;
     tinst                                  = 32'h0;
+    jd_gate_fault                          = 1'b0;
+    jd_domcall                             = 1'b0;
 
     if (~ex_i.valid) begin
       case (instr.rtype.opcode)
@@ -1387,6 +1397,42 @@ module decoder
         end
 
         // --------------------------------
+        // JITDomain transitions
+        // --------------------------------
+        // domcall and domret are one DRS access each; they jump, and change
+        // curdom, dpend and dsp, when they commit
+        riscv::OpcodeCustom2: begin
+          if (CVA6Cfg.JITDomain) begin
+            unique case (instr.itype.funct3)
+              // domcall rd, rs1, dom, label: stores the record at dsp - 8
+              3'b000: begin
+                instruction_o.fu  = STORE;
+                instruction_o.op  = ariane_pkg::DOMCALL;
+                instruction_o.rs1 = instr.itype.rs1;
+                instruction_o.rd  = instr.itype.rd;
+                jd_domcall        = 1'b1;
+                jd_gate_fault     = !jd_state_i.dgate[jd_state_i.curdom][instruction_i[31:29]];
+              end
+              // domret: loads the record at dsp
+              3'b001: begin
+                if (instruction_i == 32'h0000105b) begin
+                  instruction_o.fu = LOAD;
+                  instruction_o.op = ariane_pkg::DOMRET;
+                end else illegal_instr = 1'b1;
+              end
+              // domlpad dom, label: matched against the pending entry below
+              3'b010: begin
+                if (instruction_i[19:0] == 20'h0205b) begin
+                  instruction_o.fu = ALU;
+                  instruction_o.op = ariane_pkg::DOMLPAD;
+                end else illegal_instr = 1'b1;
+              end
+              default: illegal_instr = 1'b1;
+            endcase
+          end else illegal_instr = 1'b1;
+        end
+
+        // --------------------------------
         // Floating-Point Load/store
         // --------------------------------
         riscv::OpcodeStoreFp: begin
@@ -1886,7 +1932,23 @@ module decoder
         instruction_o.use_imm = acc_instruction.use_imm;
       end
     end
+
+    // domcall: {dom, label} in bits 63:52, the return address pc + 4 below.
+    // Addresses are canonical, so 52 bits hold them sign-extended.
+    if (CVA6Cfg.JITDomain && jd_domcall) begin
+      automatic logic [CVA6Cfg.VLEN-1:0] link = pc_i + 4;
+      instruction_o.result = CVA6Cfg.XLEN'({instruction_i[31:20], 52'($signed(link))});
+      instruction_o.use_imm = 1'b0;
+    end
   end
+
+  // JITDomain: while an entry is pending, the instruction must be a 4-byte
+  // aligned domlpad for the pending domain, with label 0 or the pending label.
+  // Debug mode does not need a pad.
+  assign jd_lpad_fault = CVA6Cfg.JITDomain && jd_state_i.dpend.valid && !debug_mode_i &&
+      !(!is_compressed_i && pc_i[1:0] == 2'b00 && instruction_i[19:0] == 20'h0205b &&
+        instruction_i[31:29] == jd_state_i.dpend.dom &&
+        (instruction_i[28:20] == 9'd0 || instruction_i[28:20] == jd_state_i.dpend.label));
 
   // ---------------------
   // Exception handling
@@ -1927,7 +1989,12 @@ module decoder
       // e.g.: they can be committed anytime and do not need to wait for any functional unit
       // check here if we decoded an invalid instruction or if the compressed decoder already decoded
       // a invalid instruction
-      if (illegal_instr || is_illegal_i) begin
+      // a domain CFI fault carries its dcause subcode in tval
+      if (jd_lpad_fault || jd_gate_fault) begin
+        instruction_o.ex.valid = 1'b1;
+        instruction_o.ex.cause = riscv::DOMAIN_CFI_FAULT;
+        instruction_o.ex.tval  = CVA6Cfg.XLEN'(jd_lpad_fault ? riscv::DCAUSE_LPAD : riscv::DCAUSE_GATE);
+      end else if (illegal_instr || is_illegal_i) begin
         if (!CVA6Cfg.CvxifEn) instruction_o.ex.valid = 1'b1;
         // we decoded an illegal exception here
         instruction_o.ex.cause = riscv::ILLEGAL_INSTR;

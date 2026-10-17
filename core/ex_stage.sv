@@ -44,6 +44,8 @@ module ex_stage
     input logic debug_mode_i,
     // JITDomain committed state - CSR_REGFILE
     input ariane_pkg::jd_state_t jd_state_i,
+    // JITDomain DRS pointer - CSR_REGFILE
+    input logic [CVA6Cfg.XLEN-1:0] jd_dsp_i,
     // rs1 forwarding - ISSUE_STAGE
     input logic [CVA6Cfg.NrIssuePorts-1:0][CVA6Cfg.VLEN-1:0] rs1_forwarding_i,
     // rs2 forwarding - ISSUE_STAGE
@@ -628,6 +630,7 @@ module ex_stage
       .pmpaddr_i,
       .debug_mode_i,
       .jd_state_i,
+      .jd_dsp_i,
       .rvfi_lsu_ctrl_o,
       .rvfi_mem_paddr_o,
       //Trigger module command signals

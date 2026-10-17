@@ -121,6 +121,7 @@
   ariane_pkg::fu_t lsu_ctrl_fu; \
   logic [(Cfg.XLEN/8)-1:0] lsu_ctrl_be; \
   logic [Cfg.TRANS_ID_BITS-1:0] lsu_ctrl_trans_id; \
+  logic [Cfg.XLEN-1:0] lsu_ctrl_data; \
   logic [Cfg.NrWbPorts-1:0][Cfg.XLEN-1:0] wbdata; \
   logic [Cfg.NrCommitPorts-1:0] commit_ack; \
   logic [Cfg.PLEN-1:0] mem_paddr; \

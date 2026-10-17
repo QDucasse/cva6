@@ -170,6 +170,8 @@ module load_store_unit
     input logic debug_mode_i,
     // JITDomain committed state - CSR_REGFILE
     input jd_state_t jd_state_i,
+    // JITDomain DRS pointer - CSR_REGFILE
+    input logic [CVA6Cfg.XLEN-1:0] jd_dsp_i,
 
     // RVFI information - RVFI
     output lsu_ctrl_t                    rvfi_lsu_ctrl_o,
@@ -205,7 +207,12 @@ module load_store_unit
   logic                        g_overflow;
   logic [(CVA6Cfg.XLEN/8)-1:0] be_i;
 
-  assign vaddr_xlen = $unsigned($signed(fu_data_i.imm) + $signed(fu_data_i.operand_a));
+  // domcall stores its DRS record at dsp - 8, domret loads it from dsp
+  always_comb begin
+    if (CVA6Cfg.JITDomain && fu_data_i.operation == DOMCALL) vaddr_xlen = jd_dsp_i - 8;
+    else if (CVA6Cfg.JITDomain && fu_data_i.operation == DOMRET) vaddr_xlen = jd_dsp_i;
+    else vaddr_xlen = $unsigned($signed(fu_data_i.imm) + $signed(fu_data_i.operand_a));
+  end
   assign vaddr_i = vaddr_xlen[CVA6Cfg.VLEN-1:0];
   // we work with SV39 or SV32, so if VM is enabled, check that all bits [XLEN-1:38] or [XLEN-1:31] are equal
   assign overflow = (CVA6Cfg.IS_XLEN64 && (!((&vaddr_xlen[CVA6Cfg.XLEN-1:CVA6Cfg.SV-1]) == 1'b1 || (|vaddr_xlen[CVA6Cfg.XLEN-1:CVA6Cfg.SV-1]) == 1'b0)));
@@ -268,10 +275,23 @@ module load_store_unit
   // JITDomain: the base operation of a typed or DRS access, and the kind and
   // AMO-ness of the access being translated, registered like the MMU request
   fu_op lsu_op_i;
+  // domcall: the DRS record {curdom, pc + 4} it stores, and its writeback
+  // {dom, label, jump target}; the immediate holds {dom, label, pc + 4}
+  logic [CVA6Cfg.XLEN-1:0] lsu_data_i, jd_result_i;
   jd_kind_t pmp_jd_kind_q;
   logic pmp_jd_amo_q;
   logic [2:0] fetch_pte_key, lsu_pte_key;
   assign lsu_op_i = CVA6Cfg.JITDomain ? jd_base_op(fu_data_i.operation) : fu_data_i.operation;
+  always_comb begin
+    lsu_data_i  = fu_data_i.operand_b;
+    jd_result_i = '0;
+    if (CVA6Cfg.JITDomain && fu_data_i.operation == DOMCALL) begin
+      automatic logic [63:0] imm = 64'(fu_data_i.imm);
+      automatic logic [63:0] rs1 = 64'(fu_data_i.operand_a);
+      lsu_data_i = CVA6Cfg.XLEN'({jd_state_i.curdom, {(riscv::DRS_PC_BITS - 52) {imm[51]}}, imm[51:0]});
+      jd_result_i = CVA6Cfg.XLEN'({imm[63:52], rs1[51:1], 1'b0});
+    end
+  end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (~rst_ni) begin
@@ -880,6 +900,12 @@ module load_store_unit
       endcase
     end
 
+    // A DRS pointer that is not 8-byte aligned is a domain CFI fault (DRS)
+    if (CVA6Cfg.JITDomain && data_misaligned && lsu_ctrl.jd_kind == JD_DRS) begin
+      cva6_misaligned_exception.cause = riscv::DOMAIN_CFI_FAULT;
+      cva6_misaligned_exception.tval  = CVA6Cfg.XLEN'(riscv::DCAUSE_DRS);
+    end
+
     if (CVA6Cfg.MmuPresent && CVA6Cfg.RVH && en_ld_st_g_translation_i && !en_ld_st_translation_i && lsu_ctrl.g_overflow) begin
 
       case (lsu_ctrl.fu)
@@ -925,14 +951,15 @@ module load_store_unit
     hlvx_inst,
     overflow,
     g_overflow,
-    fu_data_i.operand_b,
+    lsu_data_i,
     be_i,
     fu_data_i.fu,
     lsu_op_i,
     fu_data_i.trans_id,
     speculative_load_i,
     1'b0,
-    CVA6Cfg.JITDomain ? jd_kind(fu_data_i.operation) : JD_ORDINARY
+    CVA6Cfg.JITDomain ? jd_kind(fu_data_i.operation) : JD_ORDINARY,
+    jd_result_i
   };
 
   lsu_bypass #(

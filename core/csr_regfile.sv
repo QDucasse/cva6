@@ -195,6 +195,10 @@ module csr_regfile
     output logic [CVA6Cfg.XLEN-1:0] jd_dsp_o,
     // A dstatus write changes which PTE bits are keys - CONTROLLER
     output logic jd_flush_tlb_o,
+    // A domain transition committed in the previous cycle: flush and fetch
+    // from jd_redirect_pc_o - FRONTEND, CONTROLLER, COMMIT_STAGE
+    output logic jd_redirect_o,
+    output logic [CVA6Cfg.VLEN-1:0] jd_redirect_pc_o,
     // RVFI
     output rvfi_probes_csr_t rvfi_csr_o,
     //jvt output
@@ -328,6 +332,11 @@ module csr_regfile
   logic [2:0] jd_curdom_q, jd_curdom_d;
   riscv::dpend_t jd_dpend_q, jd_dpend_d;
   riscv::dmpcfg_t [15:0] jd_dmpcfg_q, jd_dmpcfg_d;
+  // a transition commits this cycle, and where execution continues
+  logic jd_commit;
+  logic [CVA6Cfg.VLEN-1:0] jd_target;
+  logic jd_redirect_q;
+  logic [CVA6Cfg.VLEN-1:0] jd_redirect_pc_q;
 
   // internal signal to keep track of access exceptions
   logic read_access_exception, update_access_exception, privilege_violation;
@@ -2272,6 +2281,45 @@ module csr_regfile
     // Timer interrupt pending, coming from platform timer
     mip_d[riscv::IRQ_M_TIMER] = time_irq_i;
 
+    // ---------------------------
+    // JITDomain transitions
+    // ---------------------------
+    // domcall, domret and a matching domlpad update the domain state when they
+    // commit. The store of domcall commits in the same cycle, so the pipeline
+    // is flushed and redirected in the next one.
+    jd_commit = 1'b0;
+    jd_target = '0;
+    if (CVA6Cfg.JITDomain && commit_ack_i[0] && !ex_i.valid) begin
+      automatic logic [63:0] res = 64'(commit_instr_i.result);
+      unique case (commit_instr_i.op)
+        // writeback {dom, label, target}, the target sign-extended from bit 51
+        DOMCALL: begin
+          jd_commit  = 1'b1;
+          jd_target  = CVA6Cfg.VLEN'($signed(res[51:0]));
+          jd_dsp_d   = jd_dsp_q - 8;
+          jd_dpend_d = jd_legal_dpend(riscv::dpend_t'{valid: 1'b1, label: res[60:52], dom: res[63:61]});
+        end
+        // writeback: the DRS record {caller domain, return pc}, the pc
+        // sign-extended from bit 60
+        DOMRET: begin
+          jd_commit   = 1'b1;
+          jd_target   = CVA6Cfg.VLEN'($signed(res[riscv::DRS_PC_BITS-1:0]));
+          jd_dsp_d    = jd_dsp_q + 8;
+          jd_curdom_d = res[63:61] & JD_DOM_MASK;
+        end
+        // without a pending entry, domlpad is a no-op
+        DOMLPAD: begin
+          if (jd_dpend_q.valid) begin
+            jd_commit   = 1'b1;
+            jd_target   = commit_instr_i.pc + 4;
+            jd_curdom_d = jd_dpend_q.dom;
+            jd_dpend_d  = '0;
+          end
+        end
+        default: ;
+      endcase
+    end
+
     // -----------------------
     // Manage Exception Stack
     // -----------------------
@@ -2515,6 +2563,9 @@ module csr_regfile
           // exception valid
         end else if (ex_i.valid) begin
           dpc_d = {{CVA6Cfg.XLEN - CVA6Cfg.VLEN{1'b0}}, trap_vector_base_o};
+          // domain transition
+        end else if (jd_commit) begin
+          dpc_d = {{CVA6Cfg.XLEN - CVA6Cfg.VLEN{jd_target[CVA6Cfg.VLEN-1]}}, jd_target};
           // return from environment
         end else if (eret_o) begin
           dpc_d = {{CVA6Cfg.XLEN - CVA6Cfg.VLEN{1'b0}}, epc_o};
@@ -3058,6 +3109,19 @@ module csr_regfile
           dmpcfg: jd_dmpcfg_q
       };
   assign jd_dsp_o = jd_dsp_q;
+  assign jd_redirect_o = jd_redirect_q;
+  assign jd_redirect_pc_o = jd_redirect_pc_q;
+
+  // A debug entry in the same cycle (single step) jumps to the debug ROM instead
+  always_ff @(posedge clk_i or negedge rst_ni) begin : jd_redirect_regs
+    if (~rst_ni) begin
+      jd_redirect_q    <= 1'b0;
+      jd_redirect_pc_q <= '0;
+    end else begin
+      jd_redirect_q    <= jd_commit && !set_debug_pc_o;
+      jd_redirect_pc_q <= jd_target;
+    end
+  end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : jd_regs
     if (~rst_ni) begin

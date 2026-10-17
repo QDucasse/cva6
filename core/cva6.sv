@@ -170,6 +170,7 @@ module cva6
       logic                             is_speculative_load;
       logic                             is_speculative_load_miss;
       ariane_pkg::jd_kind_t             jd_kind;
+      logic [CVA6Cfg.XLEN-1:0]          jd_result;  // domcall writeback: {dom, label, target}
     },
 
 
@@ -651,6 +652,13 @@ module cva6
   ariane_pkg::jd_state_t jd_state;
   logic [CVA6Cfg.XLEN-1:0] jd_dsp;
   logic jd_flush_tlb_csr_ctrl;
+  // a domain transition redirects like a trap return, one cycle after it commits
+  logic jd_redirect;
+  logic [CVA6Cfg.VLEN-1:0] jd_redirect_pc;
+  logic eret_pcgen;
+  logic [CVA6Cfg.VLEN-1:0] epc_pcgen;
+  assign eret_pcgen = eret || jd_redirect;
+  assign epc_pcgen  = jd_redirect ? jd_redirect_pc : epc_commit_pcgen;
   logic flush_unissued_instr_ctrl_id;
   logic flush_ctrl_if;
   logic flush_ctrl_id;
@@ -727,8 +735,8 @@ module cva6
       .pc_commit_i        (pc_commit),
       .ex_valid_i         (ex_commit.valid),
       .resolved_branch_i  (resolved_branch),
-      .eret_i             (eret),
-      .epc_i              (epc_commit_pcgen),
+      .eret_i             (eret_pcgen),
+      .epc_i              (epc_pcgen),
       .trap_vector_base_i (trap_vector_base_commit_pcgen),
       .set_debug_pc_i     (set_debug_pc),
       .debug_mode_i       (debug_mode),
@@ -788,6 +796,7 @@ module cva6
       .tw_i                   (tw_csr_id),
       .vtw_i                  (vtw_csr_id),
       .tsr_i                  (tsr_csr_id),
+      .jd_state_i             (jd_state),
       .hu_i                   (hu),
       .mcbie_i                (mcbie),
       .scbie_i                (scbie),
@@ -1011,6 +1020,7 @@ module cva6
       .rst_ni(rst_ni),
       .debug_mode_i(debug_mode),
       .jd_state_i(jd_state),
+      .jd_dsp_i(jd_dsp),
       .flush_i(flush_ctrl_ex),
       .rs1_forwarding_i(rs1_forwarding_id_ex),
       .rs2_forwarding_i(rs2_forwarding_id_ex),
@@ -1164,7 +1174,7 @@ module cva6
   ) commit_stage_i (
       .clk_i,
       .rst_ni,
-      .halt_i                             (halt_ctrl),
+      .halt_i                             (halt_ctrl || jd_redirect),
       .flush_dcache_i                     (dcache_flush_ctrl_cache),
       .exception_o                        (ex_commit),
       .dirty_fp_state_o                   (dirty_fp_state),
@@ -1308,6 +1318,8 @@ module cva6
       .jd_state_o                         (jd_state),
       .jd_dsp_o                           (jd_dsp),
       .jd_flush_tlb_o                     (jd_flush_tlb_csr_ctrl),
+      .jd_redirect_o                      (jd_redirect),
+      .jd_redirect_pc_o                   (jd_redirect_pc),
       .mcbie_o                            (mcbie),
       .scbie_o                            (scbie),
       .hcbie_o                            (hcbie),
@@ -1418,7 +1430,7 @@ module cva6
       .halt_frontend_o       (halt_frontend),
       .halt_o                (halt_ctrl),
       // control ports
-      .eret_i                (eret),
+      .eret_i                (eret_pcgen),
       .ex_valid_i            (ex_commit.valid),
       .set_debug_pc_i        (set_debug_pc),
       .resolved_branch_i     (resolved_branch),
