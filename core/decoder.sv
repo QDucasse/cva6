@@ -1347,6 +1347,46 @@ module decoder
         end
 
         // --------------------------------
+        // JITDomain typed loads and stores
+        // --------------------------------
+        // dl*/ds* behave as the base loads and stores, checked for the
+        // rights of dtarget[curdom]
+        riscv::OpcodeCustom0: begin
+          if (CVA6Cfg.JITDomain) begin
+            instruction_o.fu = LOAD;
+            imm_select = IIMM;
+            instruction_o.rs1 = instr.itype.rs1;
+            instruction_o.rd = instr.itype.rd;
+            unique case (instr.itype.funct3)
+              3'b000:  instruction_o.op = ariane_pkg::DLB;
+              3'b001:  instruction_o.op = ariane_pkg::DLH;
+              3'b010:  instruction_o.op = ariane_pkg::DLW;
+              3'b011:  instruction_o.op = ariane_pkg::DLD;
+              3'b100:  instruction_o.op = ariane_pkg::DLBU;
+              3'b101:  instruction_o.op = ariane_pkg::DLHU;
+              3'b110:  instruction_o.op = ariane_pkg::DLWU;
+              default: illegal_instr = 1'b1;
+            endcase
+          end else illegal_instr = 1'b1;
+        end
+
+        riscv::OpcodeCustom1: begin
+          if (CVA6Cfg.JITDomain) begin
+            instruction_o.fu = STORE;
+            imm_select = SIMM;
+            instruction_o.rs1 = instr.stype.rs1;
+            instruction_o.rs2 = instr.stype.rs2;
+            unique case (instr.stype.funct3)
+              3'b000:  instruction_o.op = ariane_pkg::DSB;
+              3'b001:  instruction_o.op = ariane_pkg::DSH;
+              3'b010:  instruction_o.op = ariane_pkg::DSW;
+              3'b011:  instruction_o.op = ariane_pkg::DSD;
+              default: illegal_instr = 1'b1;
+            endcase
+          end else illegal_instr = 1'b1;
+        end
+
+        // --------------------------------
         // Floating-Point Load/store
         // --------------------------------
         riscv::OpcodeStoreFp: begin
