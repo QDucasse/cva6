@@ -43,7 +43,12 @@ module pmp_data_if
     input jd_state_t jd_state_i,
     input logic debug_mode_i,
     input jd_kind_t lsu_jd_kind_i,  // kind of the data access
-    input logic lsu_jd_amo_i  // LR, SC or AMO: needs R and W
+    input logic lsu_jd_amo_i,  // LR, SC or AMO: needs R and W
+    // With translation, keys come from the leaf PTEs, otherwise from dmpcfg
+    input logic enable_translation_i,
+    input logic en_ld_st_translation_i,
+    input logic [2:0] fetch_pte_key_i,
+    input logic [2:0] lsu_pte_key_i
 );
   // virtual address causing the exception
   logic [CVA6Cfg.XLEN-1:0] fetch_vaddr_xlen, lsu_vaddr_xlen;
@@ -148,7 +153,8 @@ module pmp_data_if
   );
 
   // Fetch domain check, for the pending domain when an entry is pending
-  assign if_key = if_pmp_match ? jd_state_i.dmpcfg[if_pmp_idx[3:0]].key : 3'b000;
+  assign if_key = enable_translation_i ? fetch_pte_key_i :
+                  if_pmp_match ? jd_state_i.dmpcfg[if_pmp_idx[3:0]].key : 3'b000;
   assign if_pmp_locked = if_pmp_match && pmpcfg_i[if_pmp_idx].locked;
 
   dom_check #(
@@ -240,7 +246,8 @@ module pmp_data_if
   );
 
   // Load/store domain check
-  assign data_key = data_pmp_match ? jd_state_i.dmpcfg[data_pmp_idx[3:0]].key : 3'b000;
+  assign data_key = en_ld_st_translation_i ? lsu_pte_key_i :
+                    data_pmp_match ? jd_state_i.dmpcfg[data_pmp_idx[3:0]].key : 3'b000;
   assign data_pmp_locked = data_pmp_match && pmpcfg_i[data_pmp_idx].locked;
   assign data_need = lsu_jd_amo_i ? (JD_RIGHT_R | JD_RIGHT_W) :
                      lsu_is_store_i ? JD_RIGHT_W : JD_RIGHT_R;

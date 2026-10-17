@@ -48,6 +48,7 @@ module cva6_ptw
     input logic v_i,  // current virtualization mode bit
     input logic ld_st_v_i,  // load/store virtualization mode bit
     input logic hlvx_inst_i,  // is a HLVX load/store instruction
+    input logic jd_keys_en_i,  // JITDomain: leaf PTEs carry a key in bits 56:54
 
     input logic lsu_is_store_i,  // this translation was triggered by a store
     // PTW memory interface
@@ -129,6 +130,12 @@ module cva6_ptw
     G_FINAL_STAGE
   }
       ptw_stage_q, ptw_stage_d;
+
+  // Reserved PTE bits that must be zero: all of them, except the JITDomain key
+  // of a leaf PTE of the S-stage translation while keys are enabled
+  logic [$bits(pte.reserved)-1:0] pte_rsvd_mask;
+  assign pte_rsvd_mask = (CVA6Cfg.JITDomain && jd_keys_en_i && (pte.r || pte.x) &&
+                          (!CVA6Cfg.RVH || ptw_stage_q == S_STAGE)) ? {{($bits(pte.reserved) - 3) {1'b1}}, 3'b000} : '1;
 
   // is this an instruction page table walk?
   logic is_instr_ptw_q, is_instr_ptw_n;
@@ -435,7 +442,9 @@ module cva6_ptw
           // Invalid PTE
           // -------------
           // If pte.v = 0, or if pte.r = 0 and pte.w = 1, or if pte.reserved !=0 in sv39 and sv39x4, stop and raise a page-fault exception.
-          if (!pte.v || (!pte.r && pte.w) || (|pte.reserved && CVA6Cfg.IS_XLEN64) || (!CVA6Cfg.SvnapotEn && pte.n) || (CVA6Cfg.SvnapotEn && !(pte.r || pte.x) && pte.n))
+          // With JITDomain enabled, the low three reserved bits of a leaf PTE are its key;
+          // a non-leaf PTE with a key faults like any other reserved bit.
+          if (!pte.v || (!pte.r && pte.w) || (|(pte.reserved & pte_rsvd_mask) && CVA6Cfg.IS_XLEN64) || (!CVA6Cfg.SvnapotEn && pte.n) || (CVA6Cfg.SvnapotEn && !(pte.r || pte.x) && pte.n))
             state_d = PROPAGATE_ERROR;
           // -----------
           // Valid PTE

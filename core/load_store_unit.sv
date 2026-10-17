@@ -270,6 +270,7 @@ module load_store_unit
   fu_op lsu_op_i;
   jd_kind_t pmp_jd_kind_q;
   logic pmp_jd_amo_q;
+  logic [2:0] fetch_pte_key, lsu_pte_key;
   assign lsu_op_i = CVA6Cfg.JITDomain ? jd_base_op(fu_data_i.operation) : fu_data_i.operation;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -337,6 +338,9 @@ module load_store_unit
         .mbe_i           (mbe_i),
 
         .hlvx_inst_i    (mmu_hlvx_inst),
+        .jd_keys_en_i   (jd_state_i.en),
+        .fetch_key_o    (fetch_pte_key),
+        .lsu_key_o      (lsu_pte_key),
         .hs_ld_st_inst_i(mmu_hs_ld_st_inst),
         .satp_ppn_i,
         .vsatp_ppn_i,
@@ -410,6 +414,8 @@ module load_store_unit
 
     assign itlb_miss_o                         = 1'b0;
     assign dtlb_miss_o                         = 1'b0;
+    assign fetch_pte_key                       = '0;
+    assign lsu_pte_key                         = '0;
     assign dtlb_ppn                            = lsu_paddr[CVA6Cfg.PLEN-1:12];
     assign dtlb_hit                            = 1'b1;
 
@@ -447,7 +453,11 @@ module load_store_unit
       .jd_state_i          (jd_state_i),
       .debug_mode_i        (debug_mode_i),
       .lsu_jd_kind_i       (pmp_jd_kind_q),
-      .lsu_jd_amo_i        (pmp_jd_amo_q)
+      .lsu_jd_amo_i        (pmp_jd_amo_q),
+      .enable_translation_i(CVA6Cfg.MmuPresent && enable_translation_i),
+      .en_ld_st_translation_i(CVA6Cfg.MmuPresent && en_ld_st_translation_i),
+      .fetch_pte_key_i     (fetch_pte_key),
+      .lsu_pte_key_i       (lsu_pte_key)
   );
 
   // ------------------

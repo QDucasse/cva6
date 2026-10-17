@@ -79,6 +79,12 @@ module cva6_mmu
     input logic vmxr_i,
     input logic mbe_i,
     input logic hlvx_inst_i,
+    // JITDomain: leaf PTEs carry keys - CSR_REGFILE
+    input logic jd_keys_en_i,
+    // JITDomain: key of the page being fetched, with the fetch translation
+    output logic [2:0] fetch_key_o,
+    // JITDomain: key of the data page, with lsu_valid_o
+    output logic [2:0] lsu_key_o,
     input logic hs_ld_st_inst_i,
     // input logic flag_mprv_i,
     input logic [CVA6Cfg.PPNW-1:0] satp_ppn_i,
@@ -329,6 +335,7 @@ module cva6_mmu
       .v_i,
       .ld_st_v_i,
       .hlvx_inst_i           (hlvx_inst_i),
+      .jd_keys_en_i          (jd_keys_en_i),
 
       .lsu_is_store_i(lsu_is_store_i),
       // PTW memory interface
@@ -523,6 +530,9 @@ module cva6_mmu
   exception_t misaligned_ex_n, misaligned_ex_q;
 
   assign lsu_vaddr_o = lsu_vaddr_q;
+  // JITDomain keys sit in the low reserved bits of the leaf PTE
+  assign lsu_key_o = dtlb_pte_q.reserved[2:0];
+  assign fetch_key_o = itlb_content.reserved[2:0];
   assign lsu_is_store_o = lsu_is_store_q;
   assign lsu_hlvx_inst_o = CVA6Cfg.RVH ? hlvx_inst_q : 1'b0;
 
