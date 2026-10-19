@@ -1,4 +1,4 @@
-ENTRY(main)
+ENTRY(_prog_start)
 
 SECTIONS
 {
@@ -6,7 +6,8 @@ SECTIONS
 
     . = ROM_BASE;
 
-    .text.init : { *(.text.init) }
+    /* KEEP: toolchains that link with --gc-sections (e.g. picolibc specs) would drop the reset code */
+    .text.init : { KEEP(*(.text.init)) }
 
     .text : ALIGN(0x100) {
     _TEXT_START_ = .;
@@ -33,7 +34,7 @@ SECTIONS
     .rodata : ALIGN(0x100) {
     _RODATA_START_ = .;
         *(.rodata)
-        *(.dtb*)
+        KEEP(*(.dtb*))
         *(.rodata*)
     _RODATA_END_ = .;
     }
