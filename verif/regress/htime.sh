@@ -27,6 +27,8 @@ unset SPIKE_TANDEM
 
 readonly htime_target="cv64a6_imafdch_sv39_htime"
 readonly base_target="cv64a6_imafdch_sv39"
+# The htime config without the freeze's scratch structures
+readonly noscratch_target="cv64a6_imafdch_sv39_htime_noscratch"
 readonly linker="../../config/gen_from_riscv_config/linker/link.ld"
 
 cd verif/sim
@@ -63,9 +65,25 @@ for t in yaml.safe_load(open(sys.argv[1]))["testlist"]:
     --issrun_opts="+debug_disable=1 ${sim_args}"
 }
 
-for target in "${htime_target}" "${base_target}"; do
+run_freeze() {
+  local target="$1"
+
+  run_htime "${target}" rv64h-p-htime-freeze-window
+  run_htime "${target}" rv64h-p-htime-freeze-dcache
+  run_htime "${target}" rv64h-p-htime-freeze-icache
+  run_htime "${target}" rv64h-p-htime-freeze-tlb
+  run_htime "${target}" rv64h-p-htime-freeze-bpred
+  run_htime "${target}" rv64h-p-htime-freeze-fence
+}
+
+for target in "${htime_target}" "${base_target}" "${noscratch_target}"; do
   # The generated model does not track configuration changes.
   make -C ../.. clean
+
+  if [[ "${target}" == "${noscratch_target}" ]]; then
+    run_freeze "${target}"
+    continue
+  fi
 
   if [[ "${target}" == "${htime_target}" ]]; then
     run_htime "${target}" rv64h-p-htime-time-mtime
@@ -80,12 +98,7 @@ for target in "${htime_target}" "${base_target}"; do
     run_htime "${target}" rv64h-p-htime-sstc-irq
     run_htime "${target}" rv64h-p-htime-hvti
     run_htime "${target}" rv64h-p-htime-introspect
-    run_htime "${target}" rv64h-p-htime-freeze-window
-    run_htime "${target}" rv64h-p-htime-freeze-dcache
-    run_htime "${target}" rv64h-p-htime-freeze-icache
-    run_htime "${target}" rv64h-p-htime-freeze-tlb
-    run_htime "${target}" rv64h-p-htime-freeze-bpred
-    run_htime "${target}" rv64h-p-htime-freeze-fence
+    run_freeze "${target}"
   else
     run_htime "${target}" rv64h-p-htime-time-off
   fi
