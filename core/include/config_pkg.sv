@@ -94,6 +94,12 @@ package config_pkg;
     bit                          RVHiddenTime;
     // Hidden freeze (caches, TLBs and predictors frozen during a VM exit), requires RVHiddenTime
     bit                          RVHiddenFreeze;
+    // Hidden freeze: scratch ways in each of the D$ and I$, filled while frozen and wiped at the end
+    // (0: frozen misses are non-cacheable)
+    int unsigned                 HiddenFreezeScratchWays;
+    // Hidden freeze: scratch entries in each of the ITLB and DTLB, holding frozen walk results
+    // (at least 1 with RVHiddenFreeze)
+    int unsigned                 HiddenFreezeScratchTlb;
     // Floating Point
     bit                          RVF;
     // Floating Point
@@ -338,6 +344,8 @@ package config_pkg;
     bit          RVZihpm;
     bit          RVHiddenTime;
     bit          RVHiddenFreeze;
+    int unsigned HiddenFreezeScratchWays;
+    int unsigned HiddenFreezeScratchTlb;
 
     int unsigned NR_SB_ENTRIES;
     int unsigned TRANS_ID_BITS;
@@ -502,6 +510,18 @@ package config_pkg;
     // without a shared TLB
     if (Cfg.RVHiddenFreeze && !(Cfg.RVHiddenTime && Cfg.DCacheType == WT && !Cfg.UseSharedTlb)) begin
       $fatal(1, "[config] RVHiddenFreeze requires RVHiddenTime, a WT dcache and no shared TLB");
+    end
+    // The scratch structures only exist with the freeze, and a frozen walk result needs at least one
+    // TLB scratch entry (else the retried access walks again forever)
+    if (!Cfg.RVHiddenFreeze && (Cfg.HiddenFreezeScratchWays != 0 || Cfg.HiddenFreezeScratchTlb != 0)) begin
+      $fatal(1, "[config] HiddenFreezeScratchWays/HiddenFreezeScratchTlb require RVHiddenFreeze");
+    end
+    if (Cfg.RVHiddenFreeze && Cfg.HiddenFreezeScratchTlb == 0) begin
+      $fatal(1, "[config] RVHiddenFreeze requires HiddenFreezeScratchTlb >= 1");
+    end
+    // Not implemented yet: cache scratch ways, more than one TLB scratch entry
+    if (Cfg.HiddenFreezeScratchWays != 0 || Cfg.HiddenFreezeScratchTlb > 1) begin
+      $fatal(1, "[config] HiddenFreezeScratchWays > 0 and HiddenFreezeScratchTlb > 1 not implemented");
     end
     // pragma translate_on
   endfunction

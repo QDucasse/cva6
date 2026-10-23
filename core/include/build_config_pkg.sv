@@ -84,6 +84,8 @@ package build_config_pkg;
     cfg.RVZihpm = CVA6Cfg.RVZihpm;
     cfg.RVHiddenTime = CVA6Cfg.RVHiddenTime;
     cfg.RVHiddenFreeze = CVA6Cfg.RVHiddenFreeze;
+    cfg.HiddenFreezeScratchWays = CVA6Cfg.HiddenFreezeScratchWays;
+    cfg.HiddenFreezeScratchTlb = CVA6Cfg.HiddenFreezeScratchTlb;
     cfg.NR_SB_ENTRIES = CVA6Cfg.NrScoreboardEntries;
     cfg.TRANS_ID_BITS = $clog2(CVA6Cfg.NrScoreboardEntries);
 
