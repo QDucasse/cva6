@@ -56,12 +56,12 @@ module cva6_tlb
     output logic [CVA6Cfg.PtLevels-2:0] lu_is_page_o,
     output logic lu_hit_o
 );
-  // Hidden freeze: one extra entry, the bypass, holds the walk result while frozen (the array
-  // isn't written then, and without it a retried access would miss and walk again forever).
+  // Hidden freeze: scratch entries after the array hold the walk results while frozen (the array
+  // isn't written then, and without them a retried access would miss and walk again forever).
   // Only looked up while frozen, emptied when not frozen, flushed like any other entry, never
-  // chosen by the PLRU.
-  localparam bit HasBypass = CVA6Cfg.RVHiddenFreeze;
-  localparam int unsigned NumEntries = TLB_ENTRIES + HasBypass;
+  // chosen by the PLRU. HiddenFreezeScratchTlb is 0 without the freeze, 1 for now (the bypass).
+  localparam int unsigned NumScratch = CVA6Cfg.HiddenFreezeScratchTlb;
+  localparam int unsigned NumEntries = TLB_ENTRIES + NumScratch;
   localparam int unsigned Bypass = TLB_ENTRIES;
 
   // SV39 defines three levels of page tables
@@ -409,7 +409,7 @@ module cva6_tlb
       end
     end
 
-    if (HasBypass && !freeze_i) tags_n[Bypass].valid = 1'b0;
+    if (NumScratch != 0 && !freeze_i) tags_n[Bypass].valid = 1'b0;
   end
 
   // -----------------------------------------------

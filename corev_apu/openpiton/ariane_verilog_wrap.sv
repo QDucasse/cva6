@@ -130,6 +130,8 @@ module ariane_verilog_wrap
     RVZihpm:                RVZihpmEn,
     RVHiddenTime:           1'b0,
     RVHiddenFreeze:         1'b0,
+    HiddenFreezeScratchWays: 0,
+    HiddenFreezeScratchTlb:  0,
     RVZiCbom:               1'b0, // OpenPiton doesn't support CMOs at this time
     RVF:                    RVFEn,
     RVD:                    RVDEn,
