@@ -75,16 +75,20 @@ package cva6_config_pkg;
 
   localparam CVA6ConfigRvfiTrace = 1;
 
-  // JITDomain, with the number of domains and keys overridable for synthesis sweeps
-`ifndef JITDOMAIN_NR_DOMAINS
-`define JITDOMAIN_NR_DOMAINS 8
-`endif
-`ifndef JITDOMAIN_NR_KEYS
-`define JITDOMAIN_NR_KEYS 8
-`endif
+  // JITDomain, with the number of domains and keys overridable for synthesis
+  // sweeps. The literal defaults come last so that util/user_config.py, which
+  // does not expand macros, picks them up.
   localparam CVA6ConfigJITDomain = 1;
+`ifdef JITDOMAIN_NR_DOMAINS
   localparam CVA6ConfigJITDomainNrDomains = `JITDOMAIN_NR_DOMAINS;
+`else
+  localparam CVA6ConfigJITDomainNrDomains = 8;
+`endif
+`ifdef JITDOMAIN_NR_KEYS
   localparam CVA6ConfigJITDomainNrKeys = `JITDOMAIN_NR_KEYS;
+`else
+  localparam CVA6ConfigJITDomainNrKeys = 8;
+`endif
 
   localparam config_pkg::cva6_user_cfg_t cva6_cfg = '{
       XLEN: unsigned'(CVA6ConfigXlen),
