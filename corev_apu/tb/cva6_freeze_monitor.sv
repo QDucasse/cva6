@@ -14,7 +14,7 @@
 // snapshot at the freeze start with the state at the return:
 //   - cache tag/valid SRAMs: any write;
 //   - registers (LFSRs, TLB arrays and PLRU trees, BHT, BTB, RAS): any change of the register.
-//     The TLBs' bypass entry (cva6_tlb.sv) is not checked: it holds the frozen walk results.
+//     The TLBs' scratch entries (cva6_tlb.sv) are not checked: they hold the frozen walk results.
 // Cache data is not checked (store hits update it). A guest data-cache miss accepted before the
 // exit may still fill while frozen: data-cache checks start at the first frozen cycle with no
 // cacheable miss in the MSHR.
@@ -29,6 +29,13 @@
 // end=xret: the return to the guest ended the freeze; end=hfrz0: HFRZ was written 0.
 // A change in a checked structure is fatal at the end of its window.
 //
+// Scratch structures, checked outside the windows, fatal at once:
+//   - wipe: from the second cycle after a window ends until the next one starts, no scratch entry
+//     is valid (the wipe clears them at the end of the first unfrozen cycle);
+//   - no unfrozen hit: a lookup never hits a scratch entry while not frozen.
+//   [freeze-mon] scratch <struct> valid while not frozen @<cycle>
+//   [freeze-mon] scratch <struct> hit while not frozen @<cycle>
+//
 // Each window also gives a token: its end reason, then "+<what>" for each allowed change, in the
 // order above (e.g. "xret+itlb-fence+dtlb-fence"). With +freeze_mon_expect, a test that passes
 // (tohost = 1) fails unless its windows' tokens are exactly the expected ones, so a test whose
@@ -41,9 +48,11 @@
 //   +freeze_mon_expect=<tokens>  expected windows, comma-separated tokens
 
 module cva6_freeze_monitor #(
-    // TLB arrays (the extra bypass entry after them is allowed to change while frozen)
+    // TLB arrays (the scratch entries after them are allowed to change while frozen)
     parameter int unsigned ItlbEntries = 16,
-    parameter int unsigned DtlbEntries = 16
+    parameter int unsigned DtlbEntries = 16,
+    // TLB scratch entries (HiddenFreezeScratchTlb, at least 1)
+    parameter int unsigned TlbScratch = 1
 ) (
     input logic clk_i,
     input logic rst_ni
@@ -134,6 +143,33 @@ module cva6_freeze_monitor #(
   var type (`FM_FRONTEND.btb_gen.i_btb.gen_asic_btb.btb_q) btb_q;
   var type (`FM_FRONTEND.ras_gen.i_ras.stack_q) ras_q;
 
+  // Scratch structures: any entry valid, any entry hit by a lookup
+  localparam int unsigned NumScratch = 2;
+  localparam int unsigned ItlbScratch = 0;
+  localparam int unsigned DtlbScratch = 1;
+
+  function automatic string scratch_name(int unsigned i);
+    case (i)
+      ItlbScratch: return "itlb";
+      DtlbScratch: return "dtlb";
+      default:     return "?";
+    endcase
+  endfunction
+
+  logic [NumScratch-1:0] scr_vld, scr_hit;
+  always_comb begin
+    scr_vld = '0;
+    scr_hit = '0;
+    for (int unsigned i = ItlbEntries; i < ItlbEntries + TlbScratch; i++) begin
+      scr_vld[ItlbScratch] |= `FM_MMU.i_itlb.tags_q[i].valid;
+      scr_hit[ItlbScratch] |= `FM_MMU.i_itlb.lu_hit[i] && `FM_MMU.i_itlb.lu_access_i;
+    end
+    for (int unsigned i = DtlbEntries; i < DtlbEntries + TlbScratch; i++) begin
+      scr_vld[DtlbScratch] |= `FM_MMU.i_dtlb.tags_q[i].valid;
+      scr_hit[DtlbScratch] |= `FM_MMU.i_dtlb.lu_hit[i] && `FM_MMU.i_dtlb.lu_access_i;
+    end
+  end
+
   // Changes: SRAM writes in this cycle, register changes made in the previous cycle. A change
   // with an allowed cause goes to alw_* instead of chg_*.
   logic [NumStructs-1:0] chg_now, chg_prev;
@@ -193,6 +229,7 @@ module cva6_freeze_monitor #(
   logic [NumAllowed-1:0] allowed;
   longint unsigned first_alw[NumAllowed];
   string seen_wins;  // tokens of the windows so far, comma-separated
+  logic [NumScratch-1:0] scr_vld_seen, scr_hit_seen;  // reported once each (+freeze_mon_warn)
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
@@ -203,6 +240,8 @@ module cva6_freeze_monitor #(
       changed    <= '0;
       allowed    <= '0;
       seen_wins  <= "";
+      scr_vld_seen <= '0;
+      scr_hit_seen <= '0;
     end else begin
       automatic logic [NumStructs-1:0] chg = changed;
       automatic logic [NumAllowed-1:0] alw = allowed;
@@ -228,6 +267,19 @@ module cva6_freeze_monitor #(
       dtlb_flush_q   <= dtlb_flush;
 
       if (freeze && !freeze_q) win_first <= cycle;
+
+      for (int unsigned i = 0; i < NumScratch; i++) begin
+        if (!freeze_q && scr_vld[i] && !scr_vld_seen[i]) begin
+          scr_vld_seen[i] <= 1'b1;
+          $display("[freeze-mon] scratch %s valid while not frozen @%0d", scratch_name(i), cycle);
+          if (!warn_only) $fatal(1, "[freeze-mon] scratch not wiped");
+        end
+        if (!freeze && scr_hit[i] && !scr_hit_seen[i]) begin
+          scr_hit_seen[i] <= 1'b1;
+          $display("[freeze-mon] scratch %s hit while not frozen @%0d", scratch_name(i), cycle);
+          if (!warn_only) $fatal(1, "[freeze-mon] scratch hit while not frozen");
+        end
+      end
 
       for (int unsigned i = 0; i < NumStructs; i++) begin
         if (chg_prev[i] && !chg[i]) begin
