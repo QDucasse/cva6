@@ -74,6 +74,12 @@ run_freeze() {
   run_htime "${target}" rv64h-p-htime-freeze-tlb
   run_htime "${target}" rv64h-p-htime-freeze-bpred
   run_htime "${target}" rv64h-p-htime-freeze-fence
+  # The cycle checks need the scratch structures
+  if [[ "${target}" == "${noscratch_target}" ]]; then
+    run_htime "${target}" rv64h-p-htime-freeze-scratch-values
+  else
+    run_htime "${target}" rv64h-p-htime-freeze-scratch
+  fi
 }
 
 for target in "${htime_target}" "${base_target}" "${noscratch_target}"; do

@@ -119,6 +119,21 @@ testlist:
     asm_tests: <path_var>/custom/htime/freeze_fence.S
     sim_args: "+freeze_mon_expect=xret+icache-fence,xret+itlb-fence+dtlb-fence,hfrz0"
 
+  # Scratch structures: with the cycle checks on the htime config, values only on noscratch
+  - test: rv64h-p-htime-freeze-scratch
+    iterations: 1
+    path_var: TESTS_PATH
+    gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/ -DSCRATCH_TIMING"
+    asm_tests: <path_var>/custom/htime/freeze_scratch.S
+    sim_args: "+freeze_mon_expect=xret,hfrz0"
+
+  - test: rv64h-p-htime-freeze-scratch-values
+    iterations: 1
+    path_var: TESTS_PATH
+    gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
+    asm_tests: <path_var>/custom/htime/freeze_scratch.S
+    sim_args: "+freeze_mon_expect=xret,hfrz0"
+
   - test: rv64h-p-htime-time-off
     iterations: 1
     path_var: TESTS_PATH
