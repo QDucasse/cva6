@@ -519,10 +519,6 @@ package config_pkg;
     if (Cfg.RVHiddenFreeze && Cfg.HiddenFreezeScratchTlb == 0) begin
       $fatal(1, "[config] RVHiddenFreeze requires HiddenFreezeScratchTlb >= 1");
     end
-    // Not implemented yet: cache scratch ways, more than one TLB scratch entry
-    if (Cfg.HiddenFreezeScratchWays != 0 || Cfg.HiddenFreezeScratchTlb > 1) begin
-      $fatal(1, "[config] HiddenFreezeScratchWays > 0 and HiddenFreezeScratchTlb > 1 not implemented");
-    end
     // pragma translate_on
   endfunction
 
