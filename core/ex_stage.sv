@@ -189,6 +189,8 @@ module ex_stage
     input logic flush_tlb_gvma_i,
     // Hidden freeze: TLBs don't install or move their PLRU - CSR_REGFILE
     input logic freeze_i,
+    // Hidden freeze: scratch TLB entries looked up - CSR_REGFILE
+    input logic scratch_en_i,
     // Privilege mode - CSR_REGFILE
     input riscv::priv_lvl_t priv_lvl_i,
     // Data endianness - CSR REGFILE
@@ -615,6 +617,7 @@ module ex_stage
       .flush_tlb_vvma_i,
       .flush_tlb_gvma_i,
       .freeze_i,
+      .scratch_en_i,
       .itlb_miss_o,
       .dtlb_miss_o,
       .dcache_req_ports_i,

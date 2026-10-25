@@ -652,6 +652,7 @@ module cva6
   logic flush_csr_ctrl;
   // Hidden freeze (RVHiddenFreeze): caches, TLBs and predictors frozen during a VM exit
   logic freeze_csr;
+  logic scratch_en_csr;  // scratch structures looked up
   logic flush_unissued_instr_ctrl_id;
   logic flush_ctrl_if;
   logic flush_ctrl_id;
@@ -1111,6 +1112,7 @@ module cva6
       .flush_tlb_vvma_i             (flush_tlb_vvma_ctrl_ex),
       .flush_tlb_gvma_i             (flush_tlb_gvma_ctrl_ex),
       .freeze_i                     (freeze_csr),
+      .scratch_en_i                 (scratch_en_csr),
       .priv_lvl_i                   (priv_lvl),                       // from CSR
       .mbe_i                        (mbe),                            // from CSR
       .v_i                          (v),                              // from CSR
@@ -1233,6 +1235,7 @@ module cva6
       .time_irq_i,
       .time_i,
       .freeze_o                           (freeze_csr),
+      .scratch_en_o                       (scratch_en_csr),
       .flush_o                            (flush_csr_ctrl),
       .halt_csr_o                         (halt_csr_ctrl),
       .commit_instr_i                     (commit_instr_id_commit[0]),

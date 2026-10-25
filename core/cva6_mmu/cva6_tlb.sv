@@ -35,7 +35,8 @@ module cva6_tlb
     input logic flush_i,  // Flush normal translations signal
     input logic flush_vvma_i,  // Flush VS stage signal
     input logic flush_gvma_i,  // Flush G stage signal
-    input logic freeze_i,  // Hidden freeze: no install, PLRU stopped, walk results in the bypass
+    input logic freeze_i,  // Hidden freeze: no install, PLRU stopped, walk results in the scratch
+    input logic scratch_en_i,  // Hidden freeze: scratch entries looked up (registered freeze_i)
     input logic s_st_enbl_i,  // S-stage enabled
     input logic g_st_enbl_i,  // G-stage enabled
     input logic v_i,  // virtualization mode
@@ -59,10 +60,14 @@ module cva6_tlb
   // Hidden freeze: scratch entries after the array hold the walk results while frozen (the array
   // isn't written then, and without them a retried access would miss and walk again forever).
   // Only looked up while frozen, emptied when not frozen, flushed like any other entry, never
-  // chosen by the PLRU. HiddenFreezeScratchTlb is 0 without the freeze, 1 for now (the bypass).
+  // chosen by the PLRU. A walk result goes to the first invalid one, else to the one under a
+  // round-robin pointer, which the end of the freeze resets. HiddenFreezeScratchTlb is 0 without
+  // the freeze, at least 1 with it (with a single entry, each walk result only lasts until the
+  // next walk).
   localparam int unsigned NumScratch = CVA6Cfg.HiddenFreezeScratchTlb;
   localparam int unsigned NumEntries = TLB_ENTRIES + NumScratch;
-  localparam int unsigned Bypass = TLB_ENTRIES;
+  localparam int unsigned ScratchIdxWidth = cf_math_pkg::idx_width(NumScratch);
+  logic [ScratchIdxWidth-1:0] scratch_target;  // scratch entry the next frozen walk result fills
 
   // SV39 defines three levels of page tables
   struct packed {
@@ -224,7 +229,7 @@ module cva6_tlb
       // - virtualisations / S-stage / G-stage matches
       // - there exists a PT level for which and entry exists and corresponding VPN(s) match
       if (tags_q[i].valid && match_asid[i] && match_vmid[i] && match_stage[i] && (|level_match[i] || napot_tag_match[i]) &&
-          (i != Bypass || freeze_i)) begin
+          (i < TLB_ENTRIES || scratch_en_i)) begin
         lu_is_page_o = is_page_o[i];
         lu_content_o = content_q[i].pte;
         lu_hit_o     = 1'b1;
@@ -384,8 +389,8 @@ module cva6_tlb
           else if ((gpaddr_to_be_flushed_is0) && (vmid_to_be_flushed_i == tags_q[i].vmid) && (!vmid_to_be_flushed_is0))
             tags_n[i].valid = 1'b0;
         end
-        // normal replacement (into the bypass while frozen)
-      end else if (update_i.valid & (freeze_i ? i == Bypass : replace_en[i]) & !lu_hit_o) begin
+        // normal replacement (into a scratch entry while frozen)
+      end else if (update_i.valid & (freeze_i ? i == TLB_ENTRIES + scratch_target : replace_en[i]) & !lu_hit_o) begin
         vpn_to_store = update_i.vpn;
         if (update_i.is_napot_64k && CVA6Cfg.SvnapotEn) begin
           // Svnapot: For a NAPOT entry, normalize the VPN by clearing the lower bits before storage
@@ -409,7 +414,53 @@ module cva6_tlb
       end
     end
 
-    if (NumScratch != 0 && !freeze_i) tags_n[Bypass].valid = 1'b0;
+    // empty the scratch entries while not frozen (last, so it wins over the updates above)
+    if (!freeze_i) begin
+      for (int unsigned i = TLB_ENTRIES; i < NumEntries; i++) tags_n[i].valid = 1'b0;
+    end
+  end
+
+  if (NumScratch > 0) begin : gen_scratch_repl
+    logic [NumScratch-1:0] scratch_valid;
+    logic [ScratchIdxWidth-1:0] inv_scratch, rr_d, rr_q;
+    logic all_scratch_valid;
+
+    for (genvar j = 0; j < NumScratch; j++) begin : gen_scratch_valid
+      assign scratch_valid[j] = tags_q[TLB_ENTRIES+j].valid;
+    end
+
+    lzc #(
+        .WIDTH(NumScratch)
+    ) i_lzc_inv_scratch (
+        .in_i   (~scratch_valid),
+        .cnt_o  (inv_scratch),
+        .empty_o(all_scratch_valid)
+    );
+
+    // the pointer is only used once every scratch entry is valid
+    assign scratch_target = (all_scratch_valid) ? rr_q : inv_scratch;
+
+    // The pointer moves when a walk result evicts the entry under it: the install condition of
+    // update_flush, where a flush takes priority over the install.
+    always_comb begin : p_rr
+      rr_d = rr_q;
+      if (!freeze_i) begin
+        rr_d = '0;
+      end else if (update_i.valid && !lu_hit_o && all_scratch_valid &&
+                   !flush_i && !flush_vvma_i && !flush_gvma_i) begin
+        rr_d = (rr_q == NumScratch - 1) ? '0 : rr_q + 1;
+      end
+    end
+
+    always_ff @(posedge clk_i or negedge rst_ni) begin : p_rr_reg
+      if (~rst_ni) begin
+        rr_q <= '0;
+      end else begin
+        rr_q <= rr_d;
+      end
+    end
+  end else begin : gen_no_scratch_repl
+    assign scratch_target = '0;
   end
 
   // -----------------------------------------------

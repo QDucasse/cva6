@@ -98,6 +98,8 @@ module cva6_mmu
     input logic flush_tlb_gvma_i,
     // Hidden freeze: TLBs don't install or move their PLRU
     input logic freeze_i,
+    // Hidden freeze: scratch entries looked up
+    input logic scratch_en_i,
 
     // Shared TLB is busy processing a multi-cycle flush
     output logic shared_tlb_flush_busy_o,
@@ -202,6 +204,7 @@ module cva6_mmu
       .flush_vvma_i  (flush_tlb_vvma_i),
       .flush_gvma_i  (flush_tlb_gvma_i),
       .freeze_i      (freeze_i),
+      .scratch_en_i  (scratch_en_i),
       .s_st_enbl_i   (enable_translation_i),
       .g_st_enbl_i   (enable_g_translation_i),
       .v_i           (v_i),
@@ -234,6 +237,7 @@ module cva6_mmu
       .flush_vvma_i  (flush_tlb_vvma_i),
       .flush_gvma_i  (flush_tlb_gvma_i),
       .freeze_i      (freeze_i),
+      .scratch_en_i  (scratch_en_i),
       .s_st_enbl_i   (en_ld_st_translation_i),
       .g_st_enbl_i   (en_ld_st_g_translation_i),
       .v_i           (ld_st_v_i),

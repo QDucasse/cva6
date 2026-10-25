@@ -36,6 +36,9 @@ module csr_regfile
     input logic [63:0] time_i,
     // Hidden freeze: caches, TLBs and predictors frozen (RVHiddenFreeze) - FRONTEND, CACHES, MMU
     output logic freeze_o,
+    // Hidden freeze: scratch structures looked up, freeze_o but registered (off in the cycle the
+    // freezing trap commits, when they are empty anyway) - CACHES, MMU
+    output logic scratch_en_o,
     // send a flush request out when a CSR with a side effect changes - CONTROLLER
     output logic flush_o,
     // halt requested - CONTROLLER
@@ -2744,10 +2747,12 @@ module csr_regfile
       if (!htimectl_hfrz_d) frozen_d = 1'b0;
     end
     assign freeze_o = frozen_q || freeze_start;
+    assign scratch_en_o = frozen_q;
   end else begin : gen_no_freeze
     assign freeze_start = 1'b0;
     assign frozen_d     = 1'b0;
     assign freeze_o     = 1'b0;
+    assign scratch_en_o = 1'b0;
   end
 
   assign time_rdata = (CVA6Cfg.RVH && v_q) ? time_i + htimedelta_q - hhidden_time_q : time_i;
