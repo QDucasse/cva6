@@ -105,9 +105,9 @@ module wt_dcache_ctrl
   assign miss_paddr_o = {address_tag_q, address_idx_q, address_off_q};
   assign miss_size_o = (miss_nc_o) ? {1'b0, data_size_q} : 3'b111;
 
-  // noncacheable if request goes to I/O space, or if cache is disabled, or while frozen (the miss
-  // unit latches it with the miss, so a frozen miss never fills)
-  assign miss_nc_o = (~cache_en_i) | freeze_i | (~config_pkg::is_inside_cacheable_regions(
+  // noncacheable if request goes to I/O space, or if cache is disabled, or while frozen without
+  // scratch ways (the miss unit latches it with the miss, so a frozen miss never fills the main ways)
+  assign miss_nc_o = (~cache_en_i) | (freeze_i & (NumWays == CVA6Cfg.DCACHE_SET_ASSOC)) | (~config_pkg::is_inside_cacheable_regions(
       CVA6Cfg,
       {{{64-CVA6Cfg.DCACHE_TAG_WIDTH-CVA6Cfg.DCACHE_INDEX_WIDTH}{1'b0}}, address_tag_q, {CVA6Cfg.DCACHE_INDEX_WIDTH{1'b0}}}
   ));

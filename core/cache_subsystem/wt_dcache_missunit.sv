@@ -138,6 +138,7 @@ module wt_dcache_missunit
     logic [CVA6Cfg.MEM_TID_WIDTH-1:0]            id;
     logic                                        nc;
     logic [$clog2(CVA6Cfg.DCACHE_SET_ASSOC)-1:0] repl_way;
+    logic [NumWays-1:0]                          scratch_oh;  // hidden freeze: scratch way to fill
     logic [$clog2(NumPorts)-1:0]                 miss_port_idx;
   } mshr_t;
 
@@ -146,6 +147,9 @@ module wt_dcache_missunit
   logic mshr_vld_d, mshr_vld_q, mshr_vld_q1;
   logic mshr_allocate;
   logic update_lfsr, all_ways_valid;
+  // hidden freeze: the scratch way a frozen miss fills, and whether the freeze ended since the miss
+  logic [NumWays-1:0] scratch_oh;
+  logic scratch_kill_d, scratch_kill_q;
 
   logic enable_d, enable_q;
   logic flush_ack_d, flush_ack_q;
@@ -165,6 +169,7 @@ module wt_dcache_missunit
   logic [NumPorts-1:0] miss_req_masked_d, miss_req_masked_q;
 
   logic inv_vld, inv_vld_all, cl_write_en;
+  logic [NumWays-1:0] fill_oh;
   logic load_ack, store_ack, amo_ack;
 
   logic [NumPorts-1:0] mshr_rdrd_collision_d, mshr_rdrd_collision_q;
@@ -231,12 +236,57 @@ module wt_dcache_missunit
   assign mshr_d.id            = (mshr_allocate) ? miss_id_i[miss_port_idx] : mshr_q.id;
   assign mshr_d.nc            = (mshr_allocate) ? miss_nc_i[miss_port_idx] : mshr_q.nc;
   assign mshr_d.repl_way      = (mshr_allocate) ? repl_way : mshr_q.repl_way;
+  assign mshr_d.scratch_oh    = (mshr_allocate) ? scratch_oh : mshr_q.scratch_oh;
   assign mshr_d.miss_port_idx = (mshr_allocate) ? miss_port_idx : mshr_q.miss_port_idx;
 
   // currently we only have one outstanding read TX, hence an incoming load clears the MSHR
   assign mshr_vld_d           = (mshr_allocate) ? 1'b1 : (load_ack) ? 1'b0 : mshr_vld_q;
 
   assign miss_o               = (mshr_allocate) ? ~miss_nc_i[miss_port_idx] : 1'b0;
+
+  // Hidden freeze: a miss accepted while frozen fills a scratch way: the first invalid one of its
+  // set, else the one under a round-robin pointer, which the end of the freeze resets. A scratch
+  // fill that returns after the freeze ended (even if a new one started) is killed: the scratch was
+  // wiped, and the line wasn't kept coherent in between, so it's served but not written.
+  if (NumWays > CVA6Cfg.DCACHE_SET_ASSOC) begin : gen_scratch_repl
+    localparam int unsigned ScratchWays = NumWays - CVA6Cfg.DCACHE_SET_ASSOC;
+    localparam int unsigned ScratchIdxWidth = cf_math_pkg::idx_width(ScratchWays);
+
+    logic [ScratchIdxWidth-1:0] inv_scratch, rr_d, rr_q, scratch_way;
+    logic all_scratch_valid;
+
+    lzc #(
+        .WIDTH(ScratchWays)
+    ) i_lzc_inv_scratch (
+        .in_i   (~miss_vld_bits_i[miss_port_idx][NumWays-1:CVA6Cfg.DCACHE_SET_ASSOC]),
+        .cnt_o  (inv_scratch),
+        .empty_o(all_scratch_valid)
+    );
+
+    assign scratch_way = (all_scratch_valid) ? rr_q : inv_scratch;
+    assign scratch_oh  = (freeze_i) ? NumWays'(1) << (CVA6Cfg.DCACHE_SET_ASSOC + scratch_way) : '0;
+
+    always_comb begin : p_rr
+      rr_d = rr_q;
+      if (!freeze_i) begin
+        rr_d = '0;
+      end else if (mshr_allocate && all_scratch_valid) begin
+        rr_d = (rr_q == ScratchWays - 1) ? '0 : rr_q + 1;
+      end
+    end
+
+    always_ff @(posedge clk_i or negedge rst_ni) begin : p_rr_reg
+      if (!rst_ni) begin
+        rr_q <= '0;
+      end else begin
+        rr_q <= rr_d;
+      end
+    end
+  end else begin : gen_no_scratch_repl
+    assign scratch_oh = '0;
+  end
+
+  assign scratch_kill_d = (mshr_allocate) ? 1'b0 : scratch_kill_q | ~freeze_i;
 
 
   for (genvar k = 0; k < NumPorts; k++) begin : gen_rdrd_collision
@@ -450,13 +500,9 @@ module wt_dcache_missunit
   assign wr_cl_we_o = (flush_en) ? '1 : (inv_vld_all && amo_frz_q) ? amo_hit_q :
                       (inv_vld_all) ? '1 : (inv_vld) ? dcache_way_bin2oh(
       mem_rtrn_i.inv.way
-  ) : (cl_write_en) ? dcache_way_bin2oh(
-      mshr_q.repl_way
-  ) : '0;
+  ) : (cl_write_en) ? fill_oh : '0;
 
-  assign wr_vld_bits_o = (flush_en) ? '0 : (inv_vld) ? '0 : (cl_write_en) ? dcache_way_bin2oh(
-      mshr_q.repl_way
-  ) : '0;
+  assign wr_vld_bits_o = (flush_en) ? '0 : (inv_vld) ? '0 : (cl_write_en) ? fill_oh : '0;
 
   assign wr_cl_idx_o     = (flush_en) ? cnt_q                                                        :
                            (inv_vld)  ? mem_rtrn_i.inv.idx[CVA6Cfg.DCACHE_INDEX_WIDTH-1:CVA6Cfg.DCACHE_OFFSET_WIDTH] :
@@ -468,8 +514,9 @@ module wt_dcache_missunit
   assign wr_cl_user_o = mem_rtrn_i.user;
   assign wr_cl_data_be_o = (cl_write_en) ? '1 : '0;// we only write complete cachelines into the memory
 
-  // only non-NC responses write to the cache
-  assign cl_write_en = load_ack & ~mshr_q.nc;
+  // only non-NC responses write to the cache, and a killed scratch fill doesn't
+  assign cl_write_en = load_ack & ~mshr_q.nc & ~((|mshr_q.scratch_oh) & (scratch_kill_q | ~freeze_i));
+  assign fill_oh = (|mshr_q.scratch_oh) ? mshr_q.scratch_oh : dcache_way_bin2oh(mshr_q.repl_way);
 
   ///////////////////////////////////////////////////////
   // main control logic for generating tx
@@ -667,6 +714,7 @@ module wt_dcache_missunit
       amo_req_q             <= '0;
       amo_frz_q             <= '0;
       amo_hit_q             <= '0;
+      scratch_kill_q        <= '0;
       stores_inflight_q     <= '0;
     end else begin
       state_q               <= state_d;
@@ -681,6 +729,7 @@ module wt_dcache_missunit
       amo_req_q             <= amo_req_d;
       amo_frz_q             <= amo_frz_d;
       amo_hit_q             <= amo_hit_d;
+      scratch_kill_q        <= scratch_kill_d;
       stores_inflight_q     <= stores_inflight_d;
     end
   end

@@ -39,6 +39,8 @@ module wt_dcache_mem
 ) (
     input logic clk_i,
     input logic rst_ni,
+    input logic freeze_i,  // hidden freeze: scratch ways emptied while not frozen
+    input logic scratch_en_i,  // hidden freeze: scratch ways looked up (freeze_i, registered)
 
     // ports
     input logic [NumPorts-1:0][CVA6Cfg.DCACHE_TAG_WIDTH-1:0] rd_tag_i,  // tag in - comes one cycle later
@@ -239,10 +241,11 @@ module wt_dcache_mem
   // word tag comparison in write buffer
   assign wbuffer_cmp_addr = (wr_cl_vld_i) ? {wr_cl_tag_i, wr_cl_idx_i, wr_cl_off_i} :
                                             {rd_tag, bank_idx_q, bank_off_q};
-  // hit generation
+  // hit generation (a scratch way only hits while frozen)
   for (genvar i = 0; i < NumWays; i++) begin : gen_tag_cmpsel
     // tag comparison of ways >0
-    assign rd_hit_oh_o[i] = (rd_tag == tag_rdata[i]) & rd_vld_bits_o[i] & cmp_en_q;
+    assign rd_hit_oh_o[i] = (rd_tag == tag_rdata[i]) & rd_vld_bits_o[i] & cmp_en_q &
+                            (i < CVA6Cfg.DCACHE_SET_ASSOC || scratch_en_i);
     // byte offset mux of ways >0
     assign rdata_cl[i] = bank_rdata[bank_off_q[CVA6Cfg.DCACHE_OFFSET_WIDTH-1:CVA6Cfg.XLEN_ALIGN_BYTES]][i];
     assign ruser_cl[i] = bank_ruser[bank_off_q[CVA6Cfg.DCACHE_OFFSET_WIDTH-1:CVA6Cfg.XLEN_ALIGN_BYTES]][i];
@@ -354,6 +357,84 @@ module wt_dcache_mem
     );
   end
 
+  // Hidden freeze: the scratch ways, next to the main ones. Their valid bits are flops, written like
+  // the tag SRAM's and read with its latency, so that they can all be cleared at once: they are
+  // cleared in every cycle while not frozen. The read index is registered and the bits are selected
+  // in the next cycle, off the late index path (no write in a read cycle: they are the bits read).
+  if (NumWays > CVA6Cfg.DCACHE_SET_ASSOC) begin : gen_scratch
+    localparam int unsigned MainWays = CVA6Cfg.DCACHE_SET_ASSOC;
+    localparam int unsigned ScratchWays = NumWays - MainWays;
+
+    logic [CVA6Cfg.DCACHE_NUM_WORDS-1:0][ScratchWays-1:0] vld_d, vld_q;
+    logic [DCACHE_CL_IDX_WIDTH-1:0] vld_raddr_q;
+
+    for (genvar k = 0; k < DCACHE_NUM_BANKS; k++) begin : gen_data_banks
+      sram_cache #(
+          .USER_WIDTH (ScratchWays * CVA6Cfg.DCACHE_USER_WIDTH),
+          .DATA_WIDTH (ScratchWays * CVA6Cfg.XLEN),
+          .USER_EN    (CVA6Cfg.DATA_USER_EN),
+          .BYTE_ACCESS(1),
+          .TECHNO_CUT (CVA6Cfg.TechnoCut),
+          .NUM_WORDS  (CVA6Cfg.DCACHE_NUM_WORDS)
+      ) i_data_sram (
+          .clk_i  (clk_i),
+          .rst_ni (rst_ni),
+          .req_i  (bank_req[k]),
+          .we_i   (bank_we[k]),
+          .addr_i (bank_idx[k]),
+          .wuser_i(bank_wuser[k][NumWays-1:MainWays]),
+          .wdata_i(bank_wdata[k][NumWays-1:MainWays]),
+          .be_i   (bank_be[k][NumWays-1:MainWays]),
+          .ruser_o(bank_ruser[k][NumWays-1:MainWays]),
+          .rdata_o(bank_rdata[k][NumWays-1:MainWays])
+      );
+    end
+
+    for (genvar i = MainWays; i < NumWays; i++) begin : gen_tag_srams
+      assign rd_vld_bits_o[i] = vld_q[vld_raddr_q][i-MainWays];
+
+      sram_cache #(
+          .DATA_WIDTH (CVA6Cfg.DCACHE_TAG_WIDTH),
+          .BYTE_ACCESS(0),
+          .TECHNO_CUT (CVA6Cfg.TechnoCut),
+          .NUM_WORDS  (CVA6Cfg.DCACHE_NUM_WORDS)
+      ) i_tag_sram (
+          .clk_i  (clk_i),
+          .rst_ni (rst_ni),
+          .req_i  (vld_req[i]),
+          .we_i   (vld_we),
+          .addr_i (vld_addr),
+          .wuser_i('0),
+          .wdata_i(wr_cl_tag_i),
+          .be_i   ('1),
+          .ruser_o(),
+          .rdata_o(tag_rdata[i])
+      );
+    end
+
+    // Written like the tag SRAMs, but at the fill/invalidation index: the shared vld_addr also
+    // carries the read index, which comes late.
+    always_comb begin : p_vld
+      vld_d = vld_q;
+      if (vld_we) begin
+        for (int i = 0; i < ScratchWays; i++) begin
+          if (wr_cl_we_i[MainWays+i]) vld_d[wr_cl_idx_i][i] = vld_wdata[MainWays+i];
+        end
+      end
+      if (!freeze_i) vld_d = '0;
+    end
+
+    always_ff @(posedge clk_i or negedge rst_ni) begin : p_vld_regs
+      if (!rst_ni) begin
+        vld_q       <= '0;
+        vld_raddr_q <= '0;
+      end else begin
+        vld_q <= vld_d;
+        if ((|vld_req) && !vld_we) vld_raddr_q <= vld_addr;
+      end
+    end
+  end
+
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_regs
     if (!rst_ni) begin
       bank_idx_q <= '0;
@@ -422,6 +503,12 @@ module wt_dcache_mem
         if (vld_req[i] & vld_we) begin
           vld_mirror[vld_addr][i] <= vld_wdata[i];
           tag_mirror[vld_addr][i] <= wr_cl_tag_i;
+        end
+      end
+      // the scratch ways are emptied while not frozen
+      if (!freeze_i) begin
+        for (int i = CVA6Cfg.DCACHE_SET_ASSOC; i < NumWays; i++) begin
+          for (int j = 0; j < CVA6Cfg.DCACHE_NUM_WORDS; j++) vld_mirror[j][i] <= 1'b0;
         end
       end
     end

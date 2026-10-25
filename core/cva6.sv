@@ -1499,6 +1499,7 @@ module cva6
         .clk_i             (clk_i),
         .rst_ni            (rst_ni),
         .freeze_i          (freeze_csr),
+        .scratch_en_i      (scratch_en_csr),
         // I$
         .icache_en_i       (icache_en_csr),
         .icache_flush_i    (icache_flush_ctrl_cache),

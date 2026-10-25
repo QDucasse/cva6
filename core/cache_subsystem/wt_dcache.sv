@@ -33,6 +33,7 @@ module wt_dcache
     // Cache management
     input logic enable_i,  // from CSR
     input logic freeze_i,  // hidden freeze: misses are non-cacheable, from CSR
+    input logic scratch_en_i,  // hidden freeze: scratch ways looked up (freeze_i, registered)
     input logic flush_i,  // high until acknowledged
     output logic flush_ack_o,  // send a single cycle acknowledge signal when the cache is flushed
     output logic miss_o,  // we missed on a ld/st
@@ -309,6 +310,7 @@ module wt_dcache
       .not_ni_o       (wbuffer_not_ni_o),
       // TODO: fix this
       .cache_en_i     (cache_en),
+      .freeze_i       (freeze_i),
       // .cache_en_i      ( '0                  ),
       // request ports from core (store unit)
       .req_port_i     (req_ports_i[NumPorts-1]),
@@ -376,6 +378,8 @@ module wt_dcache
   ) i_wt_dcache_mem (
       .clk_i          (clk_i),
       .rst_ni         (rst_ni),
+      .freeze_i       (freeze_i),
+      .scratch_en_i   (scratch_en_i),
       // read ports
       .rd_prio_i      (rd_prio),
       .rd_tag_i       (rd_tag),

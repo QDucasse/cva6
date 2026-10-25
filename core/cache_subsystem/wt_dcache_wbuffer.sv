@@ -65,6 +65,7 @@ module wt_dcache_wbuffer
     input logic rst_ni, // Asynchronous reset active low
 
     input logic cache_en_i,  // writes are treated as NC if disabled
+    input logic freeze_i,  // hidden freeze: the scratch ways are emptied while not frozen
     output logic empty_o,  // asserted if no data is present in write buffer
     output logic not_ni_o,  // asserted if no ni data is present in write buffer
     // core request ports
@@ -535,6 +536,11 @@ module wt_dcache_wbuffer
     // we have to discard our knowledge of the corresponding cacheline state
     for (int k = 0; k < CVA6Cfg.WtDcacheWbufDepth; k++) begin
       if (inval_hit[k]) begin
+        wbuffer_d[k].checked = 1'b0;
+      end
+      // hidden freeze: a word found in a scratch way has to be looked up again once the scratch is
+      // emptied, so that it doesn't write into a later line of that way
+      if (!freeze_i && (|(wbuffer_d[k].hit_oh >> CVA6Cfg.DCACHE_SET_ASSOC))) begin
         wbuffer_d[k].checked = 1'b0;
       end
     end
