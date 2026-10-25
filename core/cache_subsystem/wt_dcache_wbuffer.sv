@@ -57,7 +57,9 @@ module wt_dcache_wbuffer
     parameter DCACHE_CL_IDX_WIDTH = 0,
     parameter type dcache_req_i_t = logic,
     parameter type dcache_req_o_t = logic,
-    parameter type wbuffer_t = logic
+    parameter type wbuffer_t = logic,
+    // main ways, then the hidden-freeze scratch ways
+    parameter int unsigned NumWays = CVA6Cfg.DCACHE_SET_ASSOC + CVA6Cfg.HiddenFreezeScratchWays
 ) (
     input logic clk_i,  // Clock
     input logic rst_ni, // Asynchronous reset active low
@@ -75,7 +77,7 @@ module wt_dcache_wbuffer
     output logic miss_we_o,  // always 1 here
     output logic [CVA6Cfg.XLEN-1:0] miss_wdata_o,
     output logic [CVA6Cfg.DCACHE_USER_WIDTH-1:0] miss_wuser_o,
-    output logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] miss_vld_bits_o,  // unused here (set to 0)
+    output logic [NumWays-1:0] miss_vld_bits_o,  // unused here (set to 0)
     output logic miss_nc_o,  // request to I/O space
     output logic [2:0] miss_size_o,  //
     output logic [CVA6Cfg.MEM_TID_WIDTH-1:0]          miss_id_o,       // ID of this transaction (wbuffer uses all IDs from 0 to DCACHE_MAX_TX-1)
@@ -90,13 +92,13 @@ module wt_dcache_wbuffer
     output logic rd_tag_only_o,  // set to 1 here as we do not have to read the data arrays
     input logic rd_ack_i,
     input logic [CVA6Cfg.XLEN-1:0] rd_data_i,  // unused
-    input logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] rd_vld_bits_i,  // unused
-    input logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] rd_hit_oh_i,
+    input logic [NumWays-1:0] rd_vld_bits_i,  // unused
+    input logic [NumWays-1:0] rd_hit_oh_i,
     // cacheline writes
     input logic wr_cl_vld_i,
     input logic [DCACHE_CL_IDX_WIDTH-1:0] wr_cl_idx_i,
     // cache word write interface
-    output logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] wr_req_o,
+    output logic [NumWays-1:0] wr_req_o,
     input logic wr_ack_i,
     output logic [DCACHE_CL_IDX_WIDTH-1:0] wr_idx_o,
     output logic [CVA6Cfg.DCACHE_OFFSET_WIDTH-1:0] wr_off_o,
@@ -183,7 +185,7 @@ module wt_dcache_wbuffer
   logic [(CVA6Cfg.XLEN/8)-1:0] tx_be;
   logic [CVA6Cfg.PLEN-1:0] wr_paddr, rd_paddr, extract_tag;
   logic [CVA6Cfg.DCACHE_TAG_WIDTH-1:0] rd_tag_d, rd_tag_q;
-  logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] rd_hit_oh_d, rd_hit_oh_q;
+  logic [NumWays-1:0] rd_hit_oh_d, rd_hit_oh_q;
   logic check_en_d, check_en_q, check_en_q1;
   logic full, dirty_rd_en, rdy;
   logic rtrn_empty, evict;

@@ -33,7 +33,9 @@ module wt_dcache_mem
     parameter config_pkg::cva6_cfg_t CVA6Cfg             = config_pkg::cva6_cfg_empty,
     parameter                        DCACHE_CL_IDX_WIDTH = 0,
     parameter type                   wbuffer_t           = logic,
-    parameter int unsigned           NumPorts            = 3
+    parameter int unsigned           NumPorts            = 3,
+    // main ways, then the hidden-freeze scratch ways
+    parameter int unsigned           NumWays             = CVA6Cfg.DCACHE_SET_ASSOC + CVA6Cfg.HiddenFreezeScratchWays
 ) (
     input logic clk_i,
     input logic rst_ni,
@@ -46,25 +48,25 @@ module wt_dcache_mem
     input  logic  [NumPorts-1:0]                              rd_tag_only_i,      // only do a tag/valid lookup, no access to data arrays
     input logic [NumPorts-1:0] rd_prio_i,  // 0: low prio, 1: high prio
     output logic [NumPorts-1:0] rd_ack_o,
-    output logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] rd_vld_bits_o,
-    output logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] rd_hit_oh_o,
+    output logic [NumWays-1:0] rd_vld_bits_o,
+    output logic [NumWays-1:0] rd_hit_oh_o,
     output logic [CVA6Cfg.XLEN-1:0] rd_data_o,
     output logic [CVA6Cfg.DCACHE_USER_WIDTH-1:0] rd_user_o,
 
     // only available on port 0, uses address signals of port 0
     input logic                                      wr_cl_vld_i,
     input logic                                      wr_cl_nc_i,       // noncacheable access
-    input logic [      CVA6Cfg.DCACHE_SET_ASSOC-1:0] wr_cl_we_i,       // writes a full cacheline
+    input logic [                       NumWays-1:0] wr_cl_we_i,       // writes a full cacheline
     input logic [      CVA6Cfg.DCACHE_TAG_WIDTH-1:0] wr_cl_tag_i,
     input logic [           DCACHE_CL_IDX_WIDTH-1:0] wr_cl_idx_i,
     input logic [   CVA6Cfg.DCACHE_OFFSET_WIDTH-1:0] wr_cl_off_i,
     input logic [     CVA6Cfg.DCACHE_LINE_WIDTH-1:0] wr_cl_data_i,
     input logic [CVA6Cfg.DCACHE_USER_LINE_WIDTH-1:0] wr_cl_user_i,
     input logic [   CVA6Cfg.DCACHE_LINE_WIDTH/8-1:0] wr_cl_data_be_i,
-    input logic [      CVA6Cfg.DCACHE_SET_ASSOC-1:0] wr_vld_bits_i,
+    input logic [                       NumWays-1:0] wr_vld_bits_i,
 
     // separate port for single word write, no tag access
-    input logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] wr_req_i,  // write a single word to offset off_i[:3]
+    input logic [NumWays-1:0] wr_req_i,  // write a single word to offset off_i[:3]
     output logic wr_ack_o,
     input logic [DCACHE_CL_IDX_WIDTH-1:0] wr_idx_i,
     input logic [CVA6Cfg.DCACHE_OFFSET_WIDTH-1:0] wr_off_i,
@@ -98,23 +100,23 @@ module wt_dcache_mem
 
   logic [DCACHE_NUM_BANKS-1:0]                                                     bank_req;
   logic [DCACHE_NUM_BANKS-1:0]                                                     bank_we;
-  logic [DCACHE_NUM_BANKS-1:0][CVA6Cfg.DCACHE_SET_ASSOC-1:0][(CVA6Cfg.XLEN/8)-1:0] bank_be;
+  logic [DCACHE_NUM_BANKS-1:0][NumWays-1:0][(CVA6Cfg.XLEN/8)-1:0] bank_be;
   logic [DCACHE_NUM_BANKS-1:0][     DCACHE_CL_IDX_WIDTH-1:0]                       bank_idx;
   logic [DCACHE_CL_IDX_WIDTH-1:0] bank_idx_d, bank_idx_q;
   logic [CVA6Cfg.DCACHE_OFFSET_WIDTH-1:0] bank_off_d, bank_off_q;
 
-  logic [DCACHE_NUM_BANKS-1:0][CVA6Cfg.DCACHE_SET_ASSOC-1:0][CVA6Cfg.XLEN-1:0] bank_wdata;  //
-  logic [DCACHE_NUM_BANKS-1:0][CVA6Cfg.DCACHE_SET_ASSOC-1:0][CVA6Cfg.XLEN-1:0] bank_rdata;  //
-  logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0][CVA6Cfg.XLEN-1:0] rdata_cl;  // selected word from each cacheline
-  logic [DCACHE_NUM_BANKS-1:0][CVA6Cfg.DCACHE_SET_ASSOC-1:0][CVA6Cfg.DCACHE_USER_WIDTH-1:0] bank_wuser;  //
-  logic [DCACHE_NUM_BANKS-1:0][CVA6Cfg.DCACHE_SET_ASSOC-1:0][CVA6Cfg.DCACHE_USER_WIDTH-1:0] bank_ruser;  //
-  logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0][CVA6Cfg.DCACHE_USER_WIDTH-1:0]                      ruser_cl;          // selected word from each cacheline
+  logic [DCACHE_NUM_BANKS-1:0][NumWays-1:0][CVA6Cfg.XLEN-1:0] bank_wdata;  //
+  logic [DCACHE_NUM_BANKS-1:0][NumWays-1:0][CVA6Cfg.XLEN-1:0] bank_rdata;  //
+  logic [NumWays-1:0][CVA6Cfg.XLEN-1:0] rdata_cl;  // selected word from each cacheline
+  logic [DCACHE_NUM_BANKS-1:0][NumWays-1:0][CVA6Cfg.DCACHE_USER_WIDTH-1:0] bank_wuser;  //
+  logic [DCACHE_NUM_BANKS-1:0][NumWays-1:0][CVA6Cfg.DCACHE_USER_WIDTH-1:0] bank_ruser;  //
+  logic [NumWays-1:0][CVA6Cfg.DCACHE_USER_WIDTH-1:0]                      ruser_cl;          // selected word from each cacheline
 
   logic [CVA6Cfg.DCACHE_TAG_WIDTH-1:0] rd_tag;
-  logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] vld_req;  // bit enable for valid regs
+  logic [NumWays-1:0] vld_req;  // bit enable for valid regs
   logic vld_we;  // valid bits write enable
-  logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] vld_wdata;  // valid bits to write
-  logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0][CVA6Cfg.DCACHE_TAG_WIDTH-1:0]            tag_rdata;                    // these are the tags coming from the tagmem
+  logic [NumWays-1:0] vld_wdata;  // valid bits to write
+  logic [NumWays-1:0][CVA6Cfg.DCACHE_TAG_WIDTH-1:0]            tag_rdata;                    // these are the tags coming from the tagmem
   logic [DCACHE_CL_IDX_WIDTH-1:0] vld_addr;  // valid bit
 
   logic [$clog2(NumPorts)-1:0] vld_sel_d, vld_sel_q;
@@ -142,7 +144,7 @@ module wt_dcache_mem
 
   // byte enable mapping
   for (genvar k = 0; k < DCACHE_NUM_BANKS; k++) begin : gen_bank
-    for (genvar j = 0; j < CVA6Cfg.DCACHE_SET_ASSOC; j++) begin : gen_bank_way
+    for (genvar j = 0; j < NumWays; j++) begin : gen_bank_way
       assign bank_be[k][j]   = (wr_cl_we_i[j] & wr_cl_vld_i)  ? wr_cl_data_be_i[k*(CVA6Cfg.XLEN/8) +: (CVA6Cfg.XLEN/8)] :
                                (wr_req_i[j]   & wr_ack_o)     ? wr_data_be_i              :
                                                                 '0;
@@ -230,7 +232,7 @@ module wt_dcache_mem
   logic [CVA6Cfg.DCACHE_OFFSET_WIDTH-CVA6Cfg.XLEN_ALIGN_BYTES-1:0] wr_cl_off;
   logic [CVA6Cfg.DCACHE_OFFSET_WIDTH-CVA6Cfg.XLEN_ALIGN_BYTES-1:0] wr_cl_nc_off;
   logic [                   $clog2(CVA6Cfg.WtDcacheWbufDepth)-1:0] wbuffer_hit_idx;
-  logic [                    $clog2(CVA6Cfg.DCACHE_SET_ASSOC)-1:0] rd_hit_idx;
+  logic [                    $clog2(NumWays)-1:0] rd_hit_idx;
 
   assign cmp_en_d = (|vld_req) & ~vld_we;
 
@@ -238,7 +240,7 @@ module wt_dcache_mem
   assign wbuffer_cmp_addr = (wr_cl_vld_i) ? {wr_cl_tag_i, wr_cl_idx_i, wr_cl_off_i} :
                                             {rd_tag, bank_idx_q, bank_off_q};
   // hit generation
-  for (genvar i = 0; i < CVA6Cfg.DCACHE_SET_ASSOC; i++) begin : gen_tag_cmpsel
+  for (genvar i = 0; i < NumWays; i++) begin : gen_tag_cmpsel
     // tag comparison of ways >0
     assign rd_hit_oh_o[i] = (rd_tag == tag_rdata[i]) & rd_vld_bits_o[i] & cmp_en_q;
     // byte offset mux of ways >0
@@ -259,7 +261,7 @@ module wt_dcache_mem
   );
 
   lzc #(
-      .WIDTH(CVA6Cfg.DCACHE_SET_ASSOC)
+      .WIDTH(NumWays)
   ) i_lzc_rd_hit (
       .in_i   (rd_hit_oh_o),
       .cnt_o  (rd_hit_idx),
@@ -318,11 +320,11 @@ module wt_dcache_mem
         .req_i  (bank_req[k]),
         .we_i   (bank_we[k]),
         .addr_i (bank_idx[k]),
-        .wuser_i(bank_wuser[k]),
-        .wdata_i(bank_wdata[k]),
-        .be_i   (bank_be[k]),
-        .ruser_o(bank_ruser[k]),
-        .rdata_o(bank_rdata[k])
+        .wuser_i(bank_wuser[k][CVA6Cfg.DCACHE_SET_ASSOC-1:0]),
+        .wdata_i(bank_wdata[k][CVA6Cfg.DCACHE_SET_ASSOC-1:0]),
+        .be_i   (bank_be[k][CVA6Cfg.DCACHE_SET_ASSOC-1:0]),
+        .ruser_o(bank_ruser[k][CVA6Cfg.DCACHE_SET_ASSOC-1:0]),
+        .rdata_o(bank_rdata[k][CVA6Cfg.DCACHE_SET_ASSOC-1:0])
     );
   end
 
@@ -407,16 +409,16 @@ module wt_dcache_mem
   else $fatal(1, "[l1 dcache] wbuffer_hit_oh signal must be hot1");
 
   // this is only used for verification!
-  logic vld_mirror[CVA6Cfg.DCACHE_NUM_WORDS-1:0][CVA6Cfg.DCACHE_SET_ASSOC-1:0];
-  logic [CVA6Cfg.DCACHE_TAG_WIDTH-1:0] tag_mirror[CVA6Cfg.DCACHE_NUM_WORDS-1:0][CVA6Cfg.DCACHE_SET_ASSOC-1:0];
-  logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] tag_write_duplicate_test;
+  logic vld_mirror[CVA6Cfg.DCACHE_NUM_WORDS-1:0][NumWays-1:0];
+  logic [CVA6Cfg.DCACHE_TAG_WIDTH-1:0] tag_mirror[CVA6Cfg.DCACHE_NUM_WORDS-1:0][NumWays-1:0];
+  logic [NumWays-1:0] tag_write_duplicate_test;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_mirror
     if (!rst_ni) begin
       vld_mirror <= '{default: '0};
       tag_mirror <= '{default: '0};
     end else begin
-      for (int i = 0; i < CVA6Cfg.DCACHE_SET_ASSOC; i++) begin
+      for (int i = 0; i < NumWays; i++) begin
         if (vld_req[i] & vld_we) begin
           vld_mirror[vld_addr][i] <= vld_wdata[i];
           tag_mirror[vld_addr][i] <= wr_cl_tag_i;
@@ -425,7 +427,7 @@ module wt_dcache_mem
     end
   end
 
-  for (genvar i = 0; i < CVA6Cfg.DCACHE_SET_ASSOC; i++) begin : gen_tag_dubl_test
+  for (genvar i = 0; i < NumWays; i++) begin : gen_tag_dubl_test
     assign tag_write_duplicate_test[i] = (tag_mirror[vld_addr][i] == wr_cl_tag_i) & vld_mirror[vld_addr][i] & (|vld_wdata);
   end
 

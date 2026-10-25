@@ -23,7 +23,9 @@ module wt_dcache_missunit
     parameter type dcache_req_t = logic,
     parameter type dcache_rtrn_t = logic,
     parameter logic [CVA6Cfg.MEM_TID_WIDTH-1:0] AmoTxId = 1,  // TX id to be used for AMOs
-    parameter int unsigned NumPorts = 4  // number of miss ports
+    parameter int unsigned NumPorts = 4,  // number of miss ports
+    // main ways, then the hidden-freeze scratch ways
+    parameter int unsigned NumWays = CVA6Cfg.DCACHE_SET_ASSOC + CVA6Cfg.HiddenFreezeScratchWays
 ) (
     input logic clk_i,  // Clock
     input logic rst_ni,  // Asynchronous reset active low
@@ -48,7 +50,7 @@ module wt_dcache_missunit
     input logic [NumPorts-1:0][CVA6Cfg.XLEN-1:0] miss_wdata_i,
     input logic [NumPorts-1:0][CVA6Cfg.DCACHE_USER_WIDTH-1:0] miss_wuser_i,
     input logic [NumPorts-1:0][CVA6Cfg.PLEN-1:0] miss_paddr_i,
-    input logic [NumPorts-1:0][CVA6Cfg.DCACHE_SET_ASSOC-1:0] miss_vld_bits_i,
+    input logic [NumPorts-1:0][NumWays-1:0] miss_vld_bits_i,
     input logic [NumPorts-1:0][2:0] miss_size_i,
     input logic [NumPorts-1:0][CVA6Cfg.MEM_TID_WIDTH-1:0] miss_id_i,  // used as transaction ID
     // signals that the request collided with a pending read
@@ -62,14 +64,14 @@ module wt_dcache_missunit
     // write interface to cache memory
     output logic wr_cl_vld_o,  // writes a full cacheline
     output logic wr_cl_nc_o,  // writes a full cacheline
-    output logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] wr_cl_we_o,  // writes a full cacheline
+    output logic [NumWays-1:0] wr_cl_we_o,  // writes a full cacheline
     output logic [CVA6Cfg.DCACHE_TAG_WIDTH-1:0] wr_cl_tag_o,
     output logic [DCACHE_CL_IDX_WIDTH-1:0] wr_cl_idx_o,
     output logic [CVA6Cfg.DCACHE_OFFSET_WIDTH-1:0] wr_cl_off_o,
     output logic [CVA6Cfg.DCACHE_LINE_WIDTH-1:0] wr_cl_data_o,
     output logic [CVA6Cfg.DCACHE_USER_LINE_WIDTH-1:0] wr_cl_user_o,
     output logic [CVA6Cfg.DCACHE_LINE_WIDTH/8-1:0] wr_cl_data_be_o,
-    output logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] wr_vld_bits_o,
+    output logic [NumWays-1:0] wr_vld_bits_o,
     // memory interface
     input logic mem_rtrn_vld_i,
     input dcache_rtrn_t mem_rtrn_i,
@@ -82,13 +84,13 @@ module wt_dcache_missunit
     output logic [CVA6Cfg.DCACHE_TAG_WIDTH-1:0] amo_rd_tag_o,
     output logic [DCACHE_CL_IDX_WIDTH-1:0] amo_rd_idx_o,
     input logic amo_rd_ack_i,
-    input logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] amo_rd_hit_oh_i
+    input logic [NumWays-1:0] amo_rd_hit_oh_i
 );
 
   // functions
-  function automatic logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] dcache_way_bin2oh(
+  function automatic logic [NumWays-1:0] dcache_way_bin2oh(
       input logic [CVA6Cfg.DCACHE_SET_ASSOC_WIDTH-1:0] in);
-    logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] out;
+    logic [NumWays-1:0] out;
     out     = '0;
     out[in] = 1'b1;
     return out;
@@ -132,7 +134,7 @@ module wt_dcache_missunit
   typedef struct packed {
     logic [CVA6Cfg.PLEN-1:0]                     paddr;
     logic [2:0]                                  size;
-    logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0]         vld_bits;
+    logic [NumWays-1:0]                          vld_bits;
     logic [CVA6Cfg.MEM_TID_WIDTH-1:0]            id;
     logic                                        nc;
     logic [$clog2(CVA6Cfg.DCACHE_SET_ASSOC)-1:0] repl_way;
@@ -153,7 +155,7 @@ module wt_dcache_missunit
   logic amo_req_d, amo_req_q;
   // hidden freeze: the AMO started frozen, and the ways its line hits in
   logic amo_frz_d, amo_frz_q;
-  logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] amo_hit_d, amo_hit_q;
+  logic [NumWays-1:0] amo_hit_d, amo_hit_q;
   logic [63:0] amo_rtrn_mux;
   logic [CVA6Cfg.XLEN-1:0] amo_data, amo_data_a, amo_data_b;
   logic [CVA6Cfg.XLEN-1:0] amo_user;  //DCACHE USER ? CVA6Cfg.DCACHE_USER_WIDTH
@@ -201,11 +203,11 @@ module wt_dcache_missunit
   // MSHR and way replacement logic (only for read ops)
   ///////////////////////////////////////////////////////
 
-  // find invalid cache line
+  // find invalid cache line (main ways)
   lzc #(
       .WIDTH(CVA6Cfg.DCACHE_SET_ASSOC)
   ) i_lzc_inv (
-      .in_i   (~miss_vld_bits_i[miss_port_idx]),
+      .in_i   (~miss_vld_bits_i[miss_port_idx][CVA6Cfg.DCACHE_SET_ASSOC-1:0]),
       .cnt_o  (inv_way),
       .empty_o(all_ways_valid)
   );

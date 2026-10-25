@@ -58,6 +58,8 @@ module wt_dcache
 );
 
   localparam DCACHE_CL_IDX_WIDTH = $clog2(CVA6Cfg.DCACHE_NUM_WORDS);
+  // Hidden freeze: the scratch ways come after the main ways in every per-way signal
+  localparam int unsigned NumWays = CVA6Cfg.DCACHE_SET_ASSOC + CVA6Cfg.HiddenFreezeScratchWays;
 
   localparam type wbuffer_t = struct packed {
     logic [CVA6Cfg.DCACHE_TAG_WIDTH+(CVA6Cfg.DCACHE_INDEX_WIDTH-CVA6Cfg.XLEN_ALIGN_BYTES)-1:0] wtag;
@@ -67,7 +69,7 @@ module wt_dcache
     logic [(CVA6Cfg.XLEN/8)-1:0] valid;  // byte is valid
     logic [(CVA6Cfg.XLEN/8)-1:0] txblock;  // byte is part of transaction in-flight
     logic checked;  // if cache state of this word has been checked
-    logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] hit_oh;  // valid way in the cache
+    logic [NumWays-1:0] hit_oh;  // valid way in the cache
   };
 
   // miss unit <-> read controllers
@@ -76,15 +78,15 @@ module wt_dcache
   // miss unit <-> memory
   logic                                                                           wr_cl_vld;
   logic                                                                           wr_cl_nc;
-  logic     [      CVA6Cfg.DCACHE_SET_ASSOC-1:0]                                  wr_cl_we;
+  logic     [                       NumWays-1:0]                                  wr_cl_we;
   logic     [      CVA6Cfg.DCACHE_TAG_WIDTH-1:0]                                  wr_cl_tag;
   logic     [           DCACHE_CL_IDX_WIDTH-1:0]                                  wr_cl_idx;
   logic     [   CVA6Cfg.DCACHE_OFFSET_WIDTH-1:0]                                  wr_cl_off;
   logic     [     CVA6Cfg.DCACHE_LINE_WIDTH-1:0]                                  wr_cl_data;
   logic     [CVA6Cfg.DCACHE_USER_LINE_WIDTH-1:0]                                  wr_cl_user;
   logic     [   CVA6Cfg.DCACHE_LINE_WIDTH/8-1:0]                                  wr_cl_data_be;
-  logic     [      CVA6Cfg.DCACHE_SET_ASSOC-1:0]                                  wr_vld_bits;
-  logic     [      CVA6Cfg.DCACHE_SET_ASSOC-1:0]                                  wr_req;
+  logic     [                       NumWays-1:0]                                  wr_vld_bits;
+  logic     [                       NumWays-1:0]                                  wr_req;
   logic                                                                           wr_ack;
   logic     [           DCACHE_CL_IDX_WIDTH-1:0]                                  wr_idx;
   logic     [   CVA6Cfg.DCACHE_OFFSET_WIDTH-1:0]                                  wr_off;
@@ -102,6 +104,7 @@ module wt_dcache
   logic     [                      NumPorts-1:0][               CVA6Cfg.PLEN-1:0] miss_paddr;
   logic     [                      NumPorts-1:0][                            2:0] miss_size;
   logic     [                      NumPorts-1:0][      CVA6Cfg.MEM_TID_WIDTH-1:0] miss_id;
+  logic     [                      NumPorts-1:0][                    NumWays-1:0] miss_vld_bits;
   logic     [                      NumPorts-1:0]                                  miss_replay;
   logic     [                      NumPorts-1:0]                                  miss_rtrn_vld;
   logic     [         CVA6Cfg.MEM_TID_WIDTH-1:0]                                  miss_rtrn_id;
@@ -116,8 +119,8 @@ module wt_dcache
   logic     [                      NumPorts-1:0][CVA6Cfg.DCACHE_OFFSET_WIDTH-1:0] rd_off;
   logic     [                  CVA6Cfg.XLEN-1:0]                                  rd_data;
   logic     [     CVA6Cfg.DCACHE_USER_WIDTH-1:0]                                  rd_user;
-  logic     [      CVA6Cfg.DCACHE_SET_ASSOC-1:0]                                  rd_vld_bits;
-  logic     [      CVA6Cfg.DCACHE_SET_ASSOC-1:0]                                  rd_hit_oh;
+  logic     [                       NumWays-1:0]                                  rd_vld_bits;
+  logic     [                       NumWays-1:0]                                  rd_hit_oh;
 
   // write buffer read port, shared with the frozen AMO lookup
   logic                                                                           wbuffer_rd_req;
@@ -150,7 +153,8 @@ module wt_dcache
       .dcache_req_t(dcache_req_t),
       .dcache_rtrn_t(dcache_rtrn_t),
       .AmoTxId(RdAmoTxId),
-      .NumPorts(NumPorts)
+      .NumPorts(NumPorts),
+      .NumWays(NumWays)
   ) i_wt_dcache_missunit (
       .clk_i          (clk_i),
       .rst_ni         (rst_ni),
@@ -173,7 +177,7 @@ module wt_dcache
       .miss_wdata_i   (miss_wdata),
       .miss_wuser_i   (miss_wuser),
       .miss_paddr_i   (miss_paddr),
-      .miss_vld_bits_i(miss_vld_bits_o),
+      .miss_vld_bits_i(miss_vld_bits),
       .miss_size_i    (miss_size),
       .miss_id_i      (miss_id),
       .miss_replay_o  (miss_replay),
@@ -208,6 +212,11 @@ module wt_dcache
       .amo_rd_hit_oh_i(rd_hit_oh)
   );
 
+  // the eviction counter (perf_counters.sv) only sees the main ways
+  for (genvar k = 0; k < NumPorts; k++) begin : gen_miss_vld_bits
+    assign miss_vld_bits_o[k] = miss_vld_bits[k][CVA6Cfg.DCACHE_SET_ASSOC-1:0];
+  end
+
   ///////////////////////////////////////////////////////
   // read controllers (LD unit and PTW/MMU)
   ///////////////////////////////////////////////////////
@@ -222,7 +231,8 @@ module wt_dcache
           .DCACHE_CL_IDX_WIDTH(DCACHE_CL_IDX_WIDTH),
           .dcache_req_i_t(dcache_req_i_t),
           .dcache_req_o_t(dcache_req_o_t),
-          .RdTxId(RdAmoTxId)
+          .RdTxId(RdAmoTxId),
+          .NumWays(NumWays)
       ) i_wt_dcache_ctrl (
           .clk_i          (clk_i),
           .rst_ni         (rst_ni),
@@ -237,7 +247,7 @@ module wt_dcache
           .miss_we_o      (miss_we[k]),
           .miss_wdata_o   (miss_wdata[k]),
           .miss_wuser_o   (miss_wuser[k]),
-          .miss_vld_bits_o(miss_vld_bits_o[k]),
+          .miss_vld_bits_o(miss_vld_bits[k]),
           .miss_paddr_o   (miss_paddr[k]),
           .miss_nc_o      (miss_nc[k]),
           .miss_size_o    (miss_size[k]),
@@ -265,7 +275,7 @@ module wt_dcache
       assign miss_we[k] = 1'b0;
       assign miss_wdata[k] = {{CVA6Cfg.XLEN} {1'b0}};
       assign miss_wuser[k] = {{CVA6Cfg.DCACHE_USER_WIDTH} {1'b0}};
-      assign miss_vld_bits_o[k] = {{CVA6Cfg.DCACHE_SET_ASSOC} {1'b0}};
+      assign miss_vld_bits[k] = '0;
       assign miss_paddr[k] = {{CVA6Cfg.PLEN} {1'b0}};
       assign miss_nc[k] = 1'b0;
       assign miss_size[k] = 3'b0;
@@ -290,7 +300,8 @@ module wt_dcache
       .DCACHE_CL_IDX_WIDTH(DCACHE_CL_IDX_WIDTH),
       .dcache_req_i_t(dcache_req_i_t),
       .dcache_req_o_t(dcache_req_o_t),
-      .wbuffer_t(wbuffer_t)
+      .wbuffer_t(wbuffer_t),
+      .NumWays(NumWays)
   ) i_wt_dcache_wbuffer (
       .clk_i          (clk_i),
       .rst_ni         (rst_ni),
@@ -308,7 +319,7 @@ module wt_dcache
       .miss_we_o      (miss_we[NumPorts-1]),
       .miss_wdata_o   (miss_wdata[NumPorts-1]),
       .miss_wuser_o   (miss_wuser[NumPorts-1]),
-      .miss_vld_bits_o(miss_vld_bits_o[NumPorts-1]),
+      .miss_vld_bits_o(miss_vld_bits[NumPorts-1]),
       .miss_paddr_o   (miss_paddr[NumPorts-1]),
       .miss_nc_o      (miss_nc[NumPorts-1]),
       .miss_size_o    (miss_size[NumPorts-1]),
@@ -360,7 +371,8 @@ module wt_dcache
       .CVA6Cfg(CVA6Cfg),
       .DCACHE_CL_IDX_WIDTH(DCACHE_CL_IDX_WIDTH),
       .wbuffer_t(wbuffer_t),
-      .NumPorts(NumPorts)
+      .NumPorts(NumPorts),
+      .NumWays(NumWays)
   ) i_wt_dcache_mem (
       .clk_i          (clk_i),
       .rst_ni         (rst_ni),

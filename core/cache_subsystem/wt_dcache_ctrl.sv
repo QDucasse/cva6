@@ -21,7 +21,9 @@ module wt_dcache_ctrl
     parameter DCACHE_CL_IDX_WIDTH = 0,
     parameter type dcache_req_i_t = logic,
     parameter type dcache_req_o_t = logic,
-    parameter logic [CVA6Cfg.MEM_TID_WIDTH-1:0] RdTxId = 1
+    parameter logic [CVA6Cfg.MEM_TID_WIDTH-1:0] RdTxId = 1,
+    // main ways, then the hidden-freeze scratch ways
+    parameter int unsigned NumWays = CVA6Cfg.DCACHE_SET_ASSOC + CVA6Cfg.HiddenFreezeScratchWays
 ) (
     input logic clk_i,  // Clock
     input logic rst_ni,  // Asynchronous reset active low
@@ -36,7 +38,7 @@ module wt_dcache_ctrl
     output logic miss_we_o,  // unused (set to 0)
     output logic [CVA6Cfg.XLEN-1:0] miss_wdata_o,  // unused (set to 0)
     output logic [CVA6Cfg.DCACHE_USER_WIDTH-1:0] miss_wuser_o,  // unused (set to 0)
-    output logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] miss_vld_bits_o,  // valid bits at the missed index
+    output logic [NumWays-1:0] miss_vld_bits_o,  // valid bits at the missed index
     output logic [CVA6Cfg.PLEN-1:0] miss_paddr_o,
     output logic miss_nc_o,  // request to I/O space
     output logic [2:0] miss_size_o,  // 00: 1byte, 01: 2byte, 10: 4byte, 11: 8byte, 111: cacheline
@@ -54,8 +56,8 @@ module wt_dcache_ctrl
     input logic rd_ack_i,
     input logic [CVA6Cfg.XLEN-1:0] rd_data_i,
     input logic [CVA6Cfg.DCACHE_USER_WIDTH-1:0] rd_user_i,
-    input logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] rd_vld_bits_i,
-    input logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] rd_hit_oh_i
+    input logic [NumWays-1:0] rd_vld_bits_i,
+    input logic [NumWays-1:0] rd_hit_oh_i
 );
 
   // controller FSM
@@ -75,7 +77,7 @@ module wt_dcache_ctrl
   logic [DCACHE_CL_IDX_WIDTH-1:0] address_idx_d, address_idx_q;
   logic [CVA6Cfg.DCACHE_OFFSET_WIDTH-1:0] address_off_d, address_off_q;
   logic [CVA6Cfg.DcacheIdWidth-1:0] id_d, id_q;
-  logic [CVA6Cfg.DCACHE_SET_ASSOC-1:0] vld_data_d, vld_data_q;
+  logic [NumWays-1:0] vld_data_d, vld_data_q;
   logic save_tag, rd_req_d, rd_req_q, rd_ack_d, rd_ack_q;
   logic [1:0] data_size_d, data_size_q;
 
