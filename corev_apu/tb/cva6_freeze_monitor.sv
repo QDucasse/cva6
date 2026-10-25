@@ -12,12 +12,13 @@
 // While the core is frozen (csr_regfile freeze_o), the caches, TLBs and predictors must not
 // change. The monitor flags any change, cycle by cycle, which is stricter than comparing a
 // snapshot at the freeze start with the state at the return:
-//   - cache tag/valid SRAMs: any write;
+//   - cache tag/valid SRAMs of the main ways: any write;
 //   - registers (LFSRs, TLB arrays and PLRU trees, BHT, BTB, RAS): any change of the register.
-//     The TLBs' scratch entries (cva6_tlb.sv) are not checked: they hold the frozen walk results.
+//     The scratch ways of the caches and the TLBs' scratch entries are not checked: they hold
+//     what the frozen misses and walks fetch.
 // Cache data is not checked (store hits update it). A guest data-cache miss accepted before the
 // exit may still fill while frozen: data-cache checks start at the first frozen cycle with no
-// cacheable miss in the MSHR.
+// cacheable main-way miss in the MSHR.
 // Allowed changes, listed as "allowed <what>@<cycle>" but not failing:
 //   - dcache-amo-inv: a frozen AMO invalidating the way its line hits in (one way, valid cleared);
 //   - dcache-fence, icache-fence: a cache flush (fence.i, or fence with DcacheFlushOnFence);
@@ -52,7 +53,12 @@ module cva6_freeze_monitor #(
     parameter int unsigned ItlbEntries = 16,
     parameter int unsigned DtlbEntries = 16,
     // TLB scratch entries (HiddenFreezeScratchTlb, at least 1)
-    parameter int unsigned TlbScratch = 1
+    parameter int unsigned TlbScratch = 1,
+    // cache main ways (the scratch ways after them are allowed to change while frozen)
+    parameter int unsigned DcacheWays = 8,
+    parameter int unsigned IcacheWays = 4,
+    // cache scratch ways (HiddenFreezeScratchWays)
+    parameter int unsigned CacheScratch = 0
 ) (
     input logic clk_i,
     input logic rst_ni
@@ -94,10 +100,11 @@ module cva6_freeze_monitor #(
   logic freeze, freeze_q;
   assign freeze = `FM_CORE.freeze_csr;
 
-  // Data-cache checks start once no cacheable (guest) miss is outstanding
+  // Data-cache checks start once no cacheable (guest) miss to the main ways is outstanding
   logic dc_guest_miss, dc_check, dc_check_q;
   assign dc_guest_miss = `FM_DCACHE.i_wt_dcache_missunit.mshr_vld_q &&
-                         !`FM_DCACHE.i_wt_dcache_missunit.mshr_q.nc;
+                         !`FM_DCACHE.i_wt_dcache_missunit.mshr_q.nc &&
+                         `FM_DCACHE.i_wt_dcache_missunit.mshr_q.scratch_oh == '0;
   assign dc_check = freeze && (dc_check_q || !dc_guest_miss);
 
   // Allowed changes
@@ -121,7 +128,7 @@ module cva6_freeze_monitor #(
 
   logic dc_amo_inv, dc_flush, ic_flush, itlb_flush, itlb_flush_q, dtlb_flush, dtlb_flush_q;
   assign dc_amo_inv = `FM_DCACHE.i_wt_dcache_missunit.amo_frz_q &&
-                      $onehot(`FM_DCACHE.i_wt_dcache_mem.vld_req) &&
+                      $onehot(`FM_DCACHE.i_wt_dcache_mem.vld_req[DcacheWays-1:0]) &&
                       `FM_DCACHE.i_wt_dcache_mem.vld_wdata == '0;
   assign dc_flush = `FM_DCACHE.i_wt_dcache_missunit.flush_en;
   assign ic_flush = `FM_ICACHE.flush_en;
@@ -144,22 +151,43 @@ module cva6_freeze_monitor #(
   var type (`FM_FRONTEND.ras_gen.i_ras.stack_q) ras_q;
 
   // Scratch structures: any entry valid, any entry hit by a lookup
-  localparam int unsigned NumScratch = 2;
+  localparam int unsigned NumScratch = 4;
   localparam int unsigned ItlbScratch = 0;
   localparam int unsigned DtlbScratch = 1;
+  localparam int unsigned DcacheScratch = 2;
+  localparam int unsigned IcacheScratch = 3;
 
   function automatic string scratch_name(int unsigned i);
     case (i)
-      ItlbScratch: return "itlb";
-      DtlbScratch: return "dtlb";
-      default:     return "?";
+      ItlbScratch:   return "itlb";
+      DtlbScratch:   return "dtlb";
+      DcacheScratch: return "dcache";
+      IcacheScratch: return "icache";
+      default:       return "?";
     endcase
   endfunction
+
+  logic dc_scr_vld, dc_scr_hit, ic_scr_vld, ic_scr_hit;
+  if (CacheScratch > 0) begin : gen_cache_scratch
+    assign dc_scr_vld = |`FM_DCACHE.i_wt_dcache_mem.gen_scratch.vld_q;
+    assign dc_scr_hit = |(`FM_DCACHE.i_wt_dcache_mem.rd_hit_oh_o >> DcacheWays);
+    assign ic_scr_vld = |`FM_ICACHE.gen_scratch.vld_q;
+    assign ic_scr_hit = |(`FM_ICACHE.cl_hit >> IcacheWays) && `FM_ICACHE.cmp_en_q;
+  end else begin : gen_no_cache_scratch
+    assign dc_scr_vld = 1'b0;
+    assign dc_scr_hit = 1'b0;
+    assign ic_scr_vld = 1'b0;
+    assign ic_scr_hit = 1'b0;
+  end
 
   logic [NumScratch-1:0] scr_vld, scr_hit;
   always_comb begin
     scr_vld = '0;
     scr_hit = '0;
+    scr_vld[DcacheScratch] = dc_scr_vld;
+    scr_hit[DcacheScratch] = dc_scr_hit;
+    scr_vld[IcacheScratch] = ic_scr_vld;
+    scr_hit[IcacheScratch] = ic_scr_hit;
     for (int unsigned i = ItlbEntries; i < ItlbEntries + TlbScratch; i++) begin
       scr_vld[ItlbScratch] |= `FM_MMU.i_itlb.tags_q[i].valid;
       scr_hit[ItlbScratch] |= `FM_MMU.i_itlb.lu_hit[i] && `FM_MMU.i_itlb.lu_access_i;
@@ -177,8 +205,8 @@ module cva6_freeze_monitor #(
   logic dc_tag_wr, ic_tag_wr, itlb_chg, dtlb_chg;
   always_comb begin
     dc_tag_wr = dc_check && `FM_DCACHE.i_wt_dcache_mem.vld_we &&
-                |`FM_DCACHE.i_wt_dcache_mem.vld_req;
-    ic_tag_wr = freeze && `FM_ICACHE.vld_we && |`FM_ICACHE.vld_req;
+                |`FM_DCACHE.i_wt_dcache_mem.vld_req[DcacheWays-1:0];
+    ic_tag_wr = freeze && `FM_ICACHE.vld_we && |`FM_ICACHE.vld_req[IcacheWays-1:0];
     itlb_chg = freeze_q &&
         (itlb_tags_q[ItlbEntries-1:0] != `FM_MMU.i_itlb.tags_q[ItlbEntries-1:0] ||
          itlb_content_q[ItlbEntries-1:0] != `FM_MMU.i_itlb.content_q[ItlbEntries-1:0] ||

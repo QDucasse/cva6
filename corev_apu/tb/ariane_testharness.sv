@@ -668,7 +668,10 @@ module ariane_testharness #(
     cva6_freeze_monitor #(
       .ItlbEntries ( CVA6Cfg.InstrTlbEntries        ),
       .DtlbEntries ( CVA6Cfg.DataTlbEntries         ),
-      .TlbScratch  ( CVA6Cfg.HiddenFreezeScratchTlb )
+      .TlbScratch  ( CVA6Cfg.HiddenFreezeScratchTlb  ),
+      .DcacheWays  ( CVA6Cfg.DCACHE_SET_ASSOC        ),
+      .IcacheWays  ( CVA6Cfg.ICACHE_SET_ASSOC        ),
+      .CacheScratch( CVA6Cfg.HiddenFreezeScratchWays )
     ) i_freeze_monitor (
       .clk_i  ( clk_i      ),
       .rst_ni ( ndmreset_n )
