@@ -48,6 +48,8 @@ module cva6_icache
     input  logic         en_i,
     // Hidden freeze: misses are non-cacheable - CSR_REGFILE
     input  logic         freeze_i,
+    // Hidden freeze: scratch ways looked up (freeze_i, registered) - CSR_REGFILE
+    input  logic         scratch_en_i,
     /// to performance counter
     output logic         miss_o,
     // address translation requests
@@ -67,6 +69,8 @@ module cva6_icache
   localparam ICACHE_OFFSET_WIDTH = $clog2(CVA6Cfg.ICACHE_LINE_WIDTH / 8);
   localparam ICACHE_NUM_WORDS = 2 ** (CVA6Cfg.ICACHE_INDEX_WIDTH - ICACHE_OFFSET_WIDTH);
   localparam ICACHE_CL_IDX_WIDTH = $clog2(ICACHE_NUM_WORDS);  // excluding byte offset
+  // Hidden freeze: the scratch ways come after the main ways in every per-way signal
+  localparam int unsigned NumWays = CVA6Cfg.ICACHE_SET_ASSOC + CVA6Cfg.HiddenFreezeScratchWays;
 
   // functions
   function automatic logic [CVA6Cfg.ICACHE_SET_ASSOC-1:0] icache_way_bin2oh(
@@ -89,7 +93,7 @@ module cva6_icache
   logic [1:0] stale_d, stale_q;
   logic rtrn_fill;  // fill for the outstanding miss (not a stale one)
   logic rtrn_stale;  // fill for a killed miss, dropped
-  logic [CVA6Cfg.ICACHE_SET_ASSOC-1:0] cl_hit;  // hit from tag compare
+  logic [NumWays-1:0] cl_hit;  // hit from tag compare
   logic cache_rden;  // triggers cache lookup
   logic cache_wren;  // triggers write to cacheline
   logic
@@ -104,6 +108,12 @@ module cva6_icache
   logic [CVA6Cfg.ICACHE_SET_ASSOC_WIDTH-1:0] repl_way;  // way to replace
   logic [CVA6Cfg.ICACHE_SET_ASSOC-1:0] repl_way_oh_d, repl_way_oh_q;  // way to replace (onehot)
   logic all_ways_valid;  // we need to switch repl strategy since all are valid
+  // hidden freeze: the scratch way a frozen miss fills, whether the outstanding miss fills the
+  // scratch (decided when it is sent), and whether the freeze ended since
+  logic [NumWays-1:0] scr_way_oh_d, scr_way_oh_q;
+  logic scr_d, scr_q;
+  logic scr_kill_d, scr_kill_q;
+  logic [NumWays-1:0] fill_oh;  // way the fill writes
 
   // invalidations / flushing
   logic inv_en;  // incoming invalidations
@@ -113,19 +123,19 @@ module cva6_icache
 
   // mem arrays
   logic                                cl_we;  // write enable to memory array
-  logic [CVA6Cfg.ICACHE_SET_ASSOC-1:0] cl_req;  // request to memory array
+  logic [NumWays-1:0] cl_req;  // request to memory array
   logic [     ICACHE_CL_IDX_WIDTH-1:0] cl_index;  // this is a cache-line index, to memory array
   logic [ICACHE_OFFSET_WIDTH-1:0] cl_offset_d, cl_offset_q;  // offset in cache line
   logic [CVA6Cfg.ICACHE_TAG_WIDTH-1:0] cl_tag_d, cl_tag_q;  // this is the cache tag
-  logic [CVA6Cfg.ICACHE_TAG_WIDTH-1:0]          cl_tag_rdata [CVA6Cfg.ICACHE_SET_ASSOC-1:0]; // these are the tags coming from the tagmem
-  logic [CVA6Cfg.ICACHE_LINE_WIDTH-1:0]         cl_rdata     [CVA6Cfg.ICACHE_SET_ASSOC-1:0]; // these are the cachelines coming from the cache
-  logic [CVA6Cfg.ICACHE_USER_LINE_WIDTH-1:0]    cl_ruser[CVA6Cfg.ICACHE_SET_ASSOC-1:0]; // these are the cachelines coming from the user cache
-  logic [CVA6Cfg.ICACHE_SET_ASSOC-1:0][CVA6Cfg.FETCH_WIDTH-1:0] cl_sel;  // selected word from each cacheline
-  logic [CVA6Cfg.ICACHE_SET_ASSOC-1:0][CVA6Cfg.FETCH_USER_WIDTH-1:0] cl_user;  // selected word from each cacheline
-  logic [CVA6Cfg.ICACHE_SET_ASSOC-1:0] vld_req;  // bit enable for valid regs
+  logic [CVA6Cfg.ICACHE_TAG_WIDTH-1:0]          cl_tag_rdata [NumWays-1:0]; // these are the tags coming from the tagmem
+  logic [CVA6Cfg.ICACHE_LINE_WIDTH-1:0]         cl_rdata     [NumWays-1:0]; // these are the cachelines coming from the cache
+  logic [CVA6Cfg.ICACHE_USER_LINE_WIDTH-1:0]    cl_ruser[NumWays-1:0]; // these are the cachelines coming from the user cache
+  logic [NumWays-1:0][CVA6Cfg.FETCH_WIDTH-1:0] cl_sel;  // selected word from each cacheline
+  logic [NumWays-1:0][CVA6Cfg.FETCH_USER_WIDTH-1:0] cl_user;  // selected word from each cacheline
+  logic [NumWays-1:0] vld_req;  // bit enable for valid regs
   logic vld_we;  // valid bits write enable
-  logic [CVA6Cfg.ICACHE_SET_ASSOC-1:0] vld_wdata;  // valid bits to write
-  logic [CVA6Cfg.ICACHE_SET_ASSOC-1:0] vld_rdata;  // valid bits coming from valid regs
+  logic [NumWays-1:0] vld_wdata;  // valid bits to write
+  logic [NumWays-1:0] vld_rdata;  // valid bits coming from valid regs
   logic [ICACHE_CL_IDX_WIDTH-1:0] vld_addr;  // valid bit
 
   // cpmtroller FSM
@@ -146,8 +156,9 @@ module cva6_icache
   // extract tag from physical address, check if NC
   assign cl_tag_d  = (areq_i.fetch_valid) ? areq_i.fetch_paddr[CVA6Cfg.ICACHE_TAG_WIDTH+CVA6Cfg.ICACHE_INDEX_WIDTH-1:CVA6Cfg.ICACHE_INDEX_WIDTH] : cl_tag_q;
 
-  // noncacheable if request goes to I/O space, or if cache is disabled, or while frozen
-  assign paddr_is_nc = (~cache_en_q) | freeze_i | (~config_pkg::is_inside_cacheable_regions(
+  // noncacheable if request goes to I/O space, or if cache is disabled, or while frozen without
+  // scratch ways
+  assign paddr_is_nc = (~cache_en_q) | (freeze_i & (NumWays == CVA6Cfg.ICACHE_SET_ASSOC)) | (~config_pkg::is_inside_cacheable_regions(
       CVA6Cfg, {{64 - CVA6Cfg.PLEN{1'b0}}, cl_tag_d, {CVA6Cfg.ICACHE_INDEX_WIDTH{1'b0}}}
   ));
 
@@ -213,6 +224,7 @@ module cva6_icache
     inv_en = 1'b0;
     flush_d = flush_q | flush_i;  // register incoming flush
     nc_d = nc_q;
+    scr_d = scr_q;
     stale_d = stale_q - 2'(rtrn_stale);
 
     // interfaces
@@ -317,6 +329,7 @@ module cva6_icache
             if (mem_data_ack_i) begin
               miss_o  = ~paddr_is_nc;
               nc_d    = paddr_is_nc;
+              scr_d   = freeze_i & (NumWays > CVA6Cfg.ICACHE_SET_ASSOC);
               state_d = MISS;
             end
           end
@@ -338,8 +351,9 @@ module cva6_icache
           if (!(dreq_i.kill_s2 || flush_d)) begin
             dreq_o.valid = 1'b1;
             // only write to cache if this address was cacheable when the miss was sent
-            // (the freeze may have started or ended since)
-            cache_wren   = ~nc_q;
+            // (the freeze may have started or ended since), and a scratch fill only if the freeze
+            // hasn't ended since
+            cache_wren   = ~nc_q & ~(scr_q & (scr_kill_q | ~freeze_i));
           end
           // bail out if this request is being killed
         end else if (dreq_i.kill_s2 || flush_d) begin
@@ -399,9 +413,9 @@ module cva6_icache
 
   assign vld_req  = (flush_en || cache_rden)        ? '1                                    :
                     (mem_rtrn_i.inv.all && inv_en)  ? '1                                    :
-                    (mem_rtrn_i.inv.vld && inv_en)  ? icache_way_bin2oh(
+                    (mem_rtrn_i.inv.vld && inv_en)  ? NumWays'(icache_way_bin2oh(
       mem_rtrn_i.inv.way
-  ) : repl_way_oh_q;
+  )) : fill_oh;
 
   assign vld_wdata = (cache_wren) ? '1 : '0;
 
@@ -409,13 +423,14 @@ module cva6_icache
   // assign vld_req   = (vld_we | cache_rden);
 
 
-  // chose random replacement if all are valid
-  assign update_lfsr = cache_wren & all_ways_valid;
+  // chose random replacement if all are valid (a scratch fill doesn't move the LFSR)
+  assign update_lfsr = cache_wren & ~scr_q & all_ways_valid;
   assign repl_way = (all_ways_valid) ? rnd_way : inv_way;
   assign repl_way_oh_d = (cmp_en_q) ? icache_way_bin2oh(repl_way) : repl_way_oh_q;
+  assign fill_oh = (scr_q) ? scr_way_oh_q : NumWays'(repl_way_oh_q);
 
   // enable signals for memory arrays
-  assign cl_req = (cache_rden) ? '1 : (cache_wren) ? repl_way_oh_q : '0;
+  assign cl_req = (cache_rden) ? '1 : (cache_wren) ? fill_oh : '0;
   assign cl_we = cache_wren;
 
 
@@ -423,7 +438,7 @@ module cva6_icache
   lzc #(
       .WIDTH(CVA6Cfg.ICACHE_SET_ASSOC)
   ) i_lzc (
-      .in_i   (~vld_rdata),
+      .in_i   (~vld_rdata[CVA6Cfg.ICACHE_SET_ASSOC-1:0]),
       .cnt_o  (inv_way),
       .empty_o(all_ways_valid)
   );
@@ -444,17 +459,19 @@ module cva6_icache
   // tag comparison, hit generation
   ///////////////////////////////////////////////////////
 
-  logic [CVA6Cfg.ICACHE_SET_ASSOC_WIDTH-1:0] hit_idx;
+  logic [cf_math_pkg::idx_width(NumWays)-1:0] hit_idx;
 
-  for (genvar i = 0; i < CVA6Cfg.ICACHE_SET_ASSOC; i++) begin : gen_tag_cmpsel
-    assign cl_hit[i] = (cl_tag_rdata[i] == cl_tag_d) & vld_rdata[i];
+  // a scratch way only hits while frozen
+  for (genvar i = 0; i < NumWays; i++) begin : gen_tag_cmpsel
+    assign cl_hit[i] = (cl_tag_rdata[i] == cl_tag_d) & vld_rdata[i] &
+                       (i < CVA6Cfg.ICACHE_SET_ASSOC || scratch_en_i);
     assign cl_sel[i] = cl_rdata[i][{cl_offset_q, 3'b0}+:CVA6Cfg.FETCH_WIDTH];
     assign cl_user[i] = CVA6Cfg.FETCH_USER_EN ? cl_ruser[i][{cl_offset_q, 3'b0}+:CVA6Cfg.FETCH_USER_WIDTH] : '0;
   end
 
 
   lzc #(
-      .WIDTH(CVA6Cfg.ICACHE_SET_ASSOC)
+      .WIDTH(NumWays)
   ) i_lzc_hit (
       .in_i   (cl_hit),
       .cnt_o  (hit_idx),
@@ -526,6 +543,126 @@ module cva6_icache
     );
   end
 
+  // Hidden freeze: the scratch ways. Their valid bits are flops, written like the tag SRAM's and
+  // read with its latency, so that they can all be cleared at once: they are cleared in every cycle
+  // while not frozen. The read index is registered and the bits are selected in the next cycle,
+  // off the late index path (there is no write in a read cycle, so they are the bits read). A
+  // frozen miss fills the first invalid scratch way of its set, else the one under a round-robin
+  // pointer, which the end of the freeze resets.
+  if (NumWays > CVA6Cfg.ICACHE_SET_ASSOC) begin : gen_scratch
+    localparam int unsigned MainWays = CVA6Cfg.ICACHE_SET_ASSOC;
+    localparam int unsigned ScratchWays = NumWays - MainWays;
+    localparam int unsigned ScratchIdxWidth = cf_math_pkg::idx_width(ScratchWays);
+
+    logic [ICACHE_NUM_WORDS-1:0][ScratchWays-1:0] vld_d, vld_q;
+    logic [ICACHE_CL_IDX_WIDTH-1:0] vld_raddr_q;
+    logic [ScratchIdxWidth-1:0] inv_scratch, rr_d, rr_q, scratch_way;
+    logic all_scratch_valid;
+    logic rr_used_d, rr_used_q;  // the scratch way is the round-robin one
+
+    for (genvar i = MainWays; i < NumWays; i++) begin : gen_scratch_sram
+      assign vld_rdata[i] = vld_q[vld_raddr_q][i-MainWays];
+
+      sram_cache #(
+          .DATA_WIDTH (CVA6Cfg.ICACHE_TAG_WIDTH),
+          .BYTE_ACCESS(0),
+          .TECHNO_CUT (CVA6Cfg.TechnoCut),
+          .NUM_WORDS  (ICACHE_NUM_WORDS)
+      ) tag_sram (
+          .clk_i  (clk_i),
+          .rst_ni (rst_ni),
+          .req_i  (vld_req[i]),
+          .we_i   (vld_we),
+          .addr_i (vld_addr),
+          .wuser_i('0),
+          .wdata_i(cl_tag_q),
+          .be_i   ('1),
+          .ruser_o(),
+          .rdata_o(cl_tag_rdata[i])
+      );
+
+      sram_cache #(
+          .USER_WIDTH (CVA6Cfg.ICACHE_USER_LINE_WIDTH),
+          .DATA_WIDTH (CVA6Cfg.ICACHE_LINE_WIDTH),
+          .USER_EN    (CVA6Cfg.FETCH_USER_EN),
+          .BYTE_ACCESS(0),
+          .TECHNO_CUT (CVA6Cfg.TechnoCut),
+          .NUM_WORDS  (ICACHE_NUM_WORDS)
+      ) data_sram (
+          .clk_i  (clk_i),
+          .rst_ni (rst_ni),
+          .req_i  (cl_req[i]),
+          .we_i   (cl_we),
+          .addr_i (cl_index),
+          .wuser_i(mem_rtrn_i.user),
+          .wdata_i(mem_rtrn_i.data),
+          .be_i   ('1),
+          .ruser_o(cl_ruser[i]),
+          .rdata_o(cl_rdata[i])
+      );
+    end
+
+    // Written like the tag SRAMs, but from early signals only: the shared vld_addr and vld_req
+    // also carry the read index and enable, which come late (through the hit logic). A fill is
+    // only written in MISS, where the index is vaddr_q's.
+    logic [ICACHE_CL_IDX_WIDTH-1:0] vld_waddr;
+    logic [ScratchWays-1:0] vld_wen;
+
+    assign vld_waddr = (flush_en) ? flush_cnt_q :
+                       (inv_en)   ? mem_rtrn_i.inv.idx[CVA6Cfg.ICACHE_INDEX_WIDTH-1:ICACHE_OFFSET_WIDTH] :
+                                    vaddr_q[CVA6Cfg.ICACHE_INDEX_WIDTH-1:ICACHE_OFFSET_WIDTH];
+    assign vld_wen = (flush_en || (inv_en && mem_rtrn_i.inv.all)) ? '1 :
+                     (cache_wren) ? fill_oh[NumWays-1:MainWays] : '0;
+
+    always_comb begin : p_vld
+      vld_d = vld_q;
+      for (int i = 0; i < ScratchWays; i++) begin
+        if (vld_wen[i]) vld_d[vld_waddr][i] = cache_wren;
+      end
+      if (!freeze_i) vld_d = '0;
+    end
+
+    lzc #(
+        .WIDTH(ScratchWays)
+    ) i_lzc_inv_scratch (
+        .in_i   (~vld_rdata[NumWays-1:MainWays]),
+        .cnt_o  (inv_scratch),
+        .empty_o(all_scratch_valid)
+    );
+
+    // chosen at the tag compare, like the main way, and the pointer moves when the miss is sent
+    assign scratch_way  = (all_scratch_valid) ? rr_q : inv_scratch;
+    assign scr_way_oh_d = (cmp_en_q) ? NumWays'(1) << (MainWays + scratch_way) : scr_way_oh_q;
+    assign rr_used_d    = (cmp_en_q) ? all_scratch_valid : rr_used_q;
+
+    always_comb begin : p_rr
+      rr_d = rr_q;
+      if (!freeze_i) begin
+        rr_d = '0;
+      end else if (mem_data_req_o && mem_data_ack_i && rr_used_d) begin
+        rr_d = (rr_q == ScratchWays - 1) ? '0 : rr_q + 1;
+      end
+    end
+
+    always_ff @(posedge clk_i or negedge rst_ni) begin : p_scratch_regs
+      if (!rst_ni) begin
+        vld_q       <= '0;
+        vld_raddr_q <= '0;
+        rr_q        <= '0;
+        rr_used_q   <= '0;
+      end else begin
+        vld_q <= vld_d;
+        if ((|vld_req) && !vld_we) vld_raddr_q <= vld_addr;
+        rr_q      <= rr_d;
+        rr_used_q <= rr_used_d;
+      end
+    end
+  end else begin : gen_no_scratch
+    assign scr_way_oh_d = '0;
+  end
+
+  assign scr_kill_d = (mem_data_req_o && mem_data_ack_i) ? 1'b0 : scr_kill_q | ~freeze_i;
+
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_regs
     if (!rst_ni) begin
@@ -540,6 +677,9 @@ module cva6_icache
       repl_way_oh_q <= '0;
       inv_q         <= '0;
       nc_q          <= '0;
+      scr_q         <= '0;
+      scr_way_oh_q  <= '0;
+      scr_kill_q    <= '0;
       stale_q       <= '0;
     end else begin
       cl_tag_q      <= cl_tag_d;
@@ -553,6 +693,9 @@ module cva6_icache
       repl_way_oh_q <= repl_way_oh_d;
       inv_q         <= inv_d;
       nc_q          <= nc_d;
+      scr_q         <= scr_d;
+      scr_way_oh_q  <= scr_way_oh_d;
+      scr_kill_q    <= scr_kill_d;
       stale_q       <= stale_d;
     end
   end

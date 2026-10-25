@@ -170,6 +170,7 @@ module cva6_hpdcache_subsystem
       .flush_i       (icache_flush_i),
       .en_i          (icache_en_i),
       .freeze_i      (1'b0),
+      .scratch_en_i  (1'b0),
       .miss_o        (icache_miss_o),
       .areq_i        (icache_areq_i),
       .areq_o        (icache_areq_o),

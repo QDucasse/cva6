@@ -121,6 +121,7 @@ module cva6_icache_axi_wrapper
       .flush_i       (flush_i),
       .en_i          (en_i),
       .freeze_i      (1'b0),
+      .scratch_en_i  (1'b0),
       .miss_o        (miss_o),
       .areq_i        (areq_i),
       .areq_o        (areq_o),

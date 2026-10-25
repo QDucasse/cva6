@@ -133,6 +133,7 @@ module wt_cache_subsystem
       .flush_i       (icache_flush_i),
       .en_i          (icache_en_i),
       .freeze_i      (freeze_i),
+      .scratch_en_i  (scratch_en_i),
       .miss_o        (icache_miss_o),
       .areq_i        (icache_areq_i),
       .areq_o        (icache_areq_o),
