@@ -47,7 +47,7 @@ run() {
   local elf="${work}/${name}.elf"
   local status=0
 
-  "${cc}" -march=rv64gch_zicsr_zifencei -mabi=lp64d -static -mcmodel=medany \
+  "${cc}" -march=rv64gch_zicsr_zifencei_zbb -mabi=lp64d -static -mcmodel=medany \
     -fvisibility=hidden -nostdlib -nostartfiles -DHTIME_QEMU \
     -I"${tests}/custom/htime/qemu" -I"${tests}/riscv-tests/env/p" \
     -I"${tests}/riscv-tests/isa/macros/scalar" \

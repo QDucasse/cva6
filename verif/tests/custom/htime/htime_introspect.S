@@ -18,7 +18,8 @@
 #   - each interrupt is taken within DL ticks of its deadline;
 #   - after a hidden exit: the next deadline is Q guest ticks later, the guest gets a
 #     full quantum of work, its largest time/cycle step stays within the bound of the
-#     no-exit baseline, and hhidden_time grew by at least the spin;
+#     no-exit baseline, its step across the exit within the bound of a native step, and
+#     hhidden_time grew by at least the spin;
 #   - after the visible exit: the guest sees the spin and hhidden_time does not move;
 #   - hhidden_cycle and hhidden_time agree (CVA6 only).
 #
@@ -26,6 +27,10 @@
 #   a0 : iteration counter          t0, t1 : previous time, cycle
 #   t2, t3 : current time, cycle    t4 : work_buf    s2 : scratch
 #   s5, s6 : largest time, cycle step since the last interrupt (reset by HS)
+#   s9 : steps left to watch after an exit (HS sets 2: the interrupt can come between a
+#        read and its step update, so the step across the exit is one of the next two)
+#   s10, s11 : largest time, cycle step over the watched steps (reset by HS)
+#   s0 : smallest cycle step since the first interrupt (reset by HS)    s1, s3 : scratch
 # Registers, HS handler:
 #   a1-a6 : scratch    s4 : round    s7 : current deadline    s8 : set when done
 
@@ -51,7 +56,9 @@
 #define BUF_BYTES       (BUF_WORDS * 8)
 
 # Quantum (guest ticks), guest-charged bound per exit (ticks, cycles), bound on the
-# delay from deadline to interrupt (ticks; QEMU delivers it from a host timer).
+# delay from deadline to interrupt (ticks; QEMU delivers it from a host timer). On CVA6 the
+# hidden window ends at the guest's first event after the return, so a hidden exit leaves
+# the step across it at a native step: CB is the loop's own jitter, B the tick phase.
 #ifdef HTIME_QEMU
 #define Q               50000
 #define B               BOUND_TICKS
@@ -59,9 +66,9 @@
 #define DL              (10 * BOUND_TICKS)
 #else
 #define Q               500
-#define B               8
-#define CB              (2 * B)
-#define DL              B
+#define B               1
+#define CB              1
+#define DL              8
 #endif
 
 # One record per round, written by the HS handler.
@@ -71,6 +78,8 @@
 #define REC_DEADLINE    24    /* hvtimecmp that fired */
 #define REC_HIDDEN      32    /* hhidden_time before this exit is accumulated */
 #define REC_ITER        40    /* guest counter read from memory */
+#define REC_XSTEP_T     48    /* guest time step across the exit before it */
+#define REC_XSTEP_C     56    /* same for cycle */
 #define REC_SIZE        64
 
 RVTEST_RV64M
@@ -104,11 +113,17 @@ RVTEST_CODE_BEGIN
   li   s8, 0
   li   s5, 0
   li   s6, 0
+  li   s9, 0
+  li   s10, 0
+  li   s11, 0
+  li   s0, -1
   csrr s7, time
   li   t0, DELTA + Q
   add  s7, s7, t0
   csrw CSR_HVTIMECMP_NUM, s7
 
+  # Branch-free, so every native step takes the same time. All reads come before the
+  # watch mask (s3), so a step across the exit is always watched.
   ENTER_MODE(MODE_VS)
   li   a0, 0
   la   t4, work_buf
@@ -117,14 +132,18 @@ RVTEST_CODE_BEGIN
 1:
   csrr t2, time
   csrr t3, cycle
+  snez s3, s9
+  neg  s3, s3
   sub  s2, t2, t0
-  bgeu s5, s2, 2f
-  mv   s5, s2
-2:
+  maxu s5, s5, s2
+  and  s1, s2, s3
+  maxu s10, s10, s1
   sub  s2, t3, t1
-  bgeu s6, s2, 3f
-  mv   s6, s2
-3:
+  maxu s6, s6, s2
+  minu s0, s0, s2
+  and  s1, s2, s3
+  maxu s11, s11, s1
+  add  s9, s9, s3
   mv   t0, t2
   mv   t1, t3
   addi a0, a0, 1
@@ -187,8 +206,9 @@ RVTEST_CODE_BEGIN
 #endif
   j    3f
 
-  # Hidden: the spin was accumulated, the guest's steps stay near the baseline and the
-  # deadline moved by Q guest ticks.
+  # Hidden: the spin was accumulated, the guest's steps stay near the baseline, the step
+  # across the exit is within CB cycles of the smallest native step (s0) and B ticks of
+  # its length in ticks, and the deadline moved by Q guest ticks.
 2:
   li   t4, SPIN_CYCLES / MTIME_DIV
   bltu t0, t4, fail
@@ -197,6 +217,15 @@ RVTEST_CODE_BEGIN
   li   t4, CB
   add  t4, t4, s11
   bltu t4, t3, fail
+  ld   t2, REC_XSTEP_T(a1)
+  ld   t3, REC_XSTEP_C(a1)
+  li   t4, CB
+  add  t4, t4, s0
+  bltu t4, t3, fail
+  li   t1, MTIME_DIV
+  divu t4, t4, t1
+  addi t4, t4, B
+  bltu t4, t2, fail
   ld   t0, REC_GEXIT(a1)
   ld   t1, REC_GEXIT - REC_SIZE(a1)
   sub  t0, t0, t1
@@ -241,14 +270,23 @@ stvec_handler:
   andi t5, t5, HSTATUS_SPV
   beqz t5, fail
 
-  # Record the round; hand the guest fresh step maxima.
+  # Record the round; hand the guest fresh step maxima and watch its steps across this exit.
   slli a1, s4, 6
   la   a2, rounds
   add  a1, a1, a2
   sd   s5, REC_GAP_T(a1)
   sd   s6, REC_GAP_C(a1)
+  sd   s10, REC_XSTEP_T(a1)
+  sd   s11, REC_XSTEP_C(a1)
   li   s5, 0
   li   s6, 0
+  li   s9, 2
+  li   s10, 0
+  li   s11, 0
+  # The first step runs from the reads before the loop: start the minimum afresh.
+  bnez s4, 7f
+  li   s0, -1
+7:
   csrr a2, CSR_HEXIT_TIME_NUM
   li   a3, DELTA
   add  a2, a2, a3
