@@ -654,8 +654,9 @@ module cva6
   logic freeze_csr;
   logic scratch_en_csr;  // scratch structures looked up
   // Hidden-time resume hold: instructions fetched ahead of the commit head
-  logic [7:0] iq_count_if, sb_count_issue;
+  logic [7:0] iq_count_if, sb_count_issue, ahead_csr;
   logic [CVA6Cfg.VLEN-1:0] fetch_vaddr_if;
+  logic issue_hold_csr;
   logic flush_unissued_instr_ctrl_id;
   logic flush_ctrl_if;
   logic flush_ctrl_id;
@@ -909,6 +910,7 @@ module cva6
       .sb_full_o               (sb_full),
       .flush_unissued_instr_i  (flush_unissued_instr_ctrl_id),
       .flush_i                 (flush_ctrl_id),
+      .issue_hold_i            (issue_hold_csr),
       .stall_i                 (stall_acc_id),
       // ID Stage
       .decoded_instr_i         (issue_entry_id_issue),
@@ -1227,6 +1229,14 @@ module cva6
     assign fetch_sdtrig_instr[i] = CVA6Cfg.SdtrigMcontrol6ExecData ? fetch_entry_if_id[i].instruction : '0;
   end
 
+  // The scoreboard counts the head instruction too; the lead compares like with like, so it is
+  // kept in both the latched and the current value.
+  always_comb begin
+    ahead_csr = iq_count_if + sb_count_issue;
+    for (int unsigned i = 0; i < CVA6Cfg.NrIssuePorts; i++)
+      ahead_csr += 8'(issue_entry_valid_id_issue[i]);
+  end
+
   csr_regfile #(
       .CVA6Cfg           (CVA6Cfg),
       .exception_t       (exception_t),
@@ -1244,6 +1254,10 @@ module cva6
       .scratch_en_o                       (scratch_en_csr),
       .flush_o                            (flush_csr_ctrl),
       .halt_csr_o                         (halt_csr_ctrl),
+      .ahead_i                            (ahead_csr),
+      .fetch_vaddr_i                      (fetch_vaddr_if),
+      .ahead_issued_i                     (sb_count_issue),
+      .issue_hold_o                       (issue_hold_csr),
       .commit_instr_i                     (commit_instr_id_commit[0]),
       .commit_ack_i                       (commit_ack),
       .boot_addr_i                        (boot_addr_i[CVA6Cfg.VLEN-1:0]),

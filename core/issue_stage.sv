@@ -39,6 +39,8 @@ module issue_stage
     input logic flush_unissued_instr_i,
     // Flush whole scoreboard - CONTROLLER
     input logic flush_i,
+    // Issue nothing this cycle (hidden-time resume hold) - CSR_REGFILE
+    input logic issue_hold_i,
     // Stall inserted by Acc dispatcher - ACC_DISPATCHER
     input logic stall_i,
     // Handshake's data with decode stage - ID_STAGE
@@ -215,6 +217,7 @@ module issue_stage
       .sb_full_o               (sb_full_o),
       .flush_unissued_instr_i,
       .flush_i,
+      .issue_hold_i,
       .x_transaction_accepted_i(x_transaction_accepted_iro_sb),
       .x_issue_writeback_i     (x_issue_writeback_iro_sb),
       .x_id_i                  (x_id_iro_sb),

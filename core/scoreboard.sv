@@ -31,6 +31,8 @@ module scoreboard #(
     input  logic                                          flush_unissued_instr_i,
     // Flush whole scoreboard - CONTROLLER
     input  logic                                          flush_i,
+    // Issue nothing this cycle (hidden-time resume hold) - CSR_REGFILE
+    input  logic                                          issue_hold_i,
     // Writeback Handling of CVXIF
     // TO_BE_COMPLETED - ISSUE_READ_OPERANDS
     input  logic                                          x_transaction_accepted_i,
@@ -156,8 +158,8 @@ module scoreboard #(
       // make sure we assign the correct trans ID
       issue_instr_o[i].trans_id = issue_pointer[i];
 
-      issue_instr_valid_o[i]    = decoded_instr_valid_i[i] & ~issue_full[i];
-      decoded_instr_ack_o[i]    = issue_ack_i[i] & ~issue_full[i];
+      issue_instr_valid_o[i]    = decoded_instr_valid_i[i] & ~issue_full[i] & ~issue_hold_i;
+      decoded_instr_ack_o[i]    = issue_ack_i[i] & ~issue_full[i] & ~issue_hold_i;
     end
   end
 

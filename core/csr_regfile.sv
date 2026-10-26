@@ -43,6 +43,15 @@ module csr_regfile
     output logic flush_o,
     // halt requested - CONTROLLER
     output logic halt_csr_o,
+    // Instructions fetched ahead of the commit head: instruction queue, ID, scoreboard
+    // (hidden-time resume hold) - FRONTEND, ID_STAGE, ISSUE_STAGE
+    input logic [7:0] ahead_i,
+    // Of those, issued to the scoreboard (hidden-time resume hold) - ISSUE_STAGE
+    input logic [7:0] ahead_issued_i,
+    // Frontend's next fetch address, registered (hidden-time resume hold) - FRONTEND
+    input logic [CVA6Cfg.VLEN-1:0] fetch_vaddr_i,
+    // Stop issuing: the scoreboard is back to its occupancy at the exit - ISSUE_STAGE
+    output logic issue_hold_o,
     // Instruction to be committed - ID_STAGE
     input scoreboard_entry_t commit_instr_i,
     // Commit acknowledged an instruction -> increase instret CSR - COMMIT_STAGE
@@ -349,6 +358,20 @@ module csr_regfile
   // event (a commit or a trap), where the hidden window closes. Until then the guest clocks
   // stay stopped, so the refill after the xRET is hidden too.
   logic resume_pending_q, resume_pending_d;
+  // Resume hold: the pipeline's lead at the hidden exit (ahead_i when the trap commits). While
+  // resume_pending, the guest's first commit is held until the refetched pipeline is back to that
+  // lead, so its commits keep their native spacing. The clocks are stopped meanwhile, so the hold
+  // is hidden. Bounded by ResumeHoldMax cycles.
+  localparam int unsigned ResumeHoldMax = 63;
+  logic [7:0] hexit_ahead_q, hexit_ahead_d;
+  logic [CVA6Cfg.VLEN-1:0] hexit_fetch_q, hexit_fetch_d;
+  logic [7:0] hexit_issued_q, hexit_issued_d;
+  // Where the exit trapped and how long that instruction is, to see at the xRET whether the
+  // hypervisor re-executes it, skips it (emulated) or goes elsewhere (no hold).
+  logic [CVA6Cfg.VLEN-1:0] hexit_pc_q, hexit_pc_d;
+  logic hexit_rvc_q, hexit_rvc_d;
+  logic [5:0] resume_hold_cnt_q, resume_hold_cnt_d;
+  logic resume_hold;
   // Sstc (hidden-time configs only): stimecmp/vstimecmp and the menvcfg/henvcfg STCE bits.
   // henvcfg.STCE reads 0 while menvcfg.STCE is 0, so its effective value is the AND of both.
   localparam bit SstcEn = CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64;
@@ -1247,6 +1270,12 @@ module csr_regfile
       hhidden_instret_d        = hhidden_instret_q;
       hexit_charge_d           = hexit_charge_q;
       resume_pending_d         = resume_pending_q;
+      hexit_ahead_d            = hexit_ahead_q;
+      hexit_fetch_d            = hexit_fetch_q;
+      hexit_issued_d           = hexit_issued_q;
+      hexit_pc_d               = hexit_pc_q;
+      hexit_rvc_d              = hexit_rvc_q;
+      resume_hold_cnt_d        = resume_hold ? resume_hold_cnt_q + 6'd1 : '0;
       menvcfg_stce_d           = menvcfg_stce_q;
       henvcfg_stce_d           = henvcfg_stce_q;
       stimecmp_d               = stimecmp_q;
@@ -2695,8 +2724,25 @@ module csr_regfile
         hexit_cycle_d   = cycle_q;
         hexit_instret_d = instret_q;
         hexit_charge_d  = '0;
+        hexit_ahead_d   = ahead_i;
+        hexit_fetch_d   = fetch_vaddr_i;
+        hexit_issued_d  = ahead_issued_i;
+        hexit_pc_d      = commit_instr_i.pc;
+        hexit_rvc_d     = commit_instr_i.is_compressed;
       end
-      if (eret_o && !v_q && v_d && htimectl_hhae_q) resume_pending_d = 1'b1;
+      if (eret_o && !v_q && v_d && htimectl_hhae_q) begin
+        resume_pending_d = 1'b1;
+        // Re-executed (sepc unchanged): restore the lead stage by stage. Emulated (sepc past
+        // the trapping instruction): the total only, there is no native state to restore and
+        // hexit_charge calibrates the rest. Elsewhere: no hold.
+        if (epc_o == hexit_pc_q + (hexit_rvc_q ? 'h2 : 'h4)) begin
+          hexit_issued_d = '0;
+        end else if (epc_o != hexit_pc_q) begin
+          hexit_ahead_d  = '0;
+          hexit_issued_d = '0;
+          hexit_fetch_d  = epc_o;
+        end
+      end
     end
   end
 
@@ -3117,7 +3163,20 @@ module csr_regfile
   end else begin
     assign tsr_o = mstatus_q.tsr;
   end
-  assign halt_csr_o = wfi_q;
+  // The hold ends when the lead is back, after ResumeHoldMax cycles (a younger fence, an I$ miss),
+  // or at once if the head instruction traps: a trap closes the window as before.
+  if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) begin : gen_resume_hold
+    assign resume_hold = resume_pending_q &&
+        (ahead_i < hexit_ahead_q || ahead_issued_i < hexit_issued_q || fetch_vaddr_i != hexit_fetch_q) &&
+        (resume_hold_cnt_q != 6'(ResumeHoldMax)) && !(commit_instr_i.valid && commit_instr_i.ex.valid);
+    // The rest of the lead builds up in front of issue, where it was at the exit (re-executed
+    // exits only: hexit_issued is 0 otherwise).
+    assign issue_hold_o = resume_hold && (hexit_issued_q != '0) && (ahead_issued_i >= hexit_issued_q);
+  end else begin : gen_no_resume_hold
+    assign resume_hold  = 1'b0;
+    assign issue_hold_o = 1'b0;
+  end
+  assign halt_csr_o = wfi_q || resume_hold;
 `ifdef PITON_ARIANE
   assign icache_en_o = icache_q[0];
 `else
@@ -3214,6 +3273,12 @@ module csr_regfile
         hhidden_instret_q        <= 64'b0;
         hexit_charge_q           <= 64'b0;
         resume_pending_q         <= 1'b0;
+        hexit_ahead_q            <= '0;
+        hexit_fetch_q            <= '0;
+        hexit_issued_q           <= '0;
+        hexit_pc_q               <= '0;
+        hexit_rvc_q              <= 1'b0;
+        resume_hold_cnt_q        <= '0;
         menvcfg_stce_q           <= 1'b0;
         henvcfg_stce_q           <= 1'b0;
         stimecmp_q               <= '1;
@@ -3332,6 +3397,12 @@ module csr_regfile
         hhidden_instret_q        <= hhidden_instret_d;
         hexit_charge_q           <= hexit_charge_d;
         resume_pending_q         <= resume_pending_d;
+        hexit_ahead_q            <= hexit_ahead_d;
+        hexit_fetch_q            <= hexit_fetch_d;
+        hexit_issued_q           <= hexit_issued_d;
+        hexit_pc_q               <= hexit_pc_d;
+        hexit_rvc_q              <= hexit_rvc_d;
+        resume_hold_cnt_q        <= resume_hold_cnt_d;
         menvcfg_stce_q           <= menvcfg_stce_d;
         henvcfg_stce_q           <= henvcfg_stce_d;
         stimecmp_q               <= stimecmp_d;
