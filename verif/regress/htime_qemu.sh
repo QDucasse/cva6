@@ -34,7 +34,7 @@ readonly cpu_off="rv64,h=true,sstc=false,xcvhtime=false"
 
 readonly tests_on=(time_mtime time_counteren time_vs htime_csrs htime_hide_routes
                    htime_hide_hs_ctl htime_hide_view htime_hide_instret sstc sstc_irq
-                   hvti htime_introspect freeze_window freeze_dcache freeze_icache freeze_tlb
+                   hvti htime_introspect htime_close freeze_window freeze_dcache freeze_icache freeze_tlb
                    freeze_bpred freeze_fence freeze_scratch)
 readonly tests_off=(time_off)
 
