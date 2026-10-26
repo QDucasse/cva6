@@ -341,6 +341,10 @@ module csr_regfile
   logic [63:0] hhidden_cycle_q, hhidden_cycle_d;
   logic [63:0] hexit_instret_q, hexit_instret_d;
   logic [63:0] hhidden_instret_q, hhidden_instret_d;
+  // resume_pending: set when an xRET commits with V 0->1 and HHAE=1, cleared at the first V=1
+  // event (a commit or a trap), where the hidden window closes. Until then the guest clocks
+  // stay stopped, so the refill after the xRET is hidden too.
+  logic resume_pending_q, resume_pending_d;
   // Sstc (hidden-time configs only): stimecmp/vstimecmp and the menvcfg/henvcfg STCE bits.
   // henvcfg.STCE reads 0 while menvcfg.STCE is 0, so its effective value is the AND of both.
   localparam bit SstcEn = CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64;
@@ -1234,6 +1238,7 @@ module csr_regfile
       hhidden_cycle_d          = hhidden_cycle_q;
       hexit_instret_d          = hexit_instret_q;
       hhidden_instret_d        = hhidden_instret_q;
+      resume_pending_d         = resume_pending_q;
       menvcfg_stce_d           = menvcfg_stce_q;
       henvcfg_stce_d           = henvcfg_stce_q;
       stimecmp_d               = stimecmp_q;
@@ -2653,24 +2658,29 @@ module csr_regfile
     // ---------------------------
     // Hidden-time latch / accumulate
     // ---------------------------
-    // Only V edges matter: latch mtime/mcycle/minstret when a trap commits with V 1->0 (to HS
-    // or M), accumulate the hidden interval when an xRET commits with V 0->1 and HHAE=1.
+    // Latch mtime/mcycle/minstret when a trap commits with V 1->0 (to HS or M). An xRET that
+    // commits with V 0->1 and HHAE=1 sets resume_pending; the hidden window closes at the first
+    // V=1 event after it, a commit or a trap, which accumulates the interval.
+    // A trap back to HS/M before any guest commit closes the old window and latches the new
+    // exit in the same cycle.
     // This comes after the CSR write logic on purpose: a hardware update in the same cycle
     // overrides a software write to hexit_* / hhidden_*.
     // instret: nothing retires in a trap cycle, so instret_q is the guest's count at the exit.
-    // instret_d at the xRET includes the xRET itself (alone on its commit cycle, as a CSR
-    // instruction), so every instruction retired in HS/M during the pause is hidden.
+    // At the close, instret_q includes the xRET and excludes the closing commit, so every
+    // instruction retired in HS/M during the pause is hidden and the guest's own are not.
     if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) begin
+      if (resume_pending_q && (|commit_ack_i || ex_i.valid)) begin
+        resume_pending_d  = 1'b0;
+        hhidden_time_d    = hhidden_time_q + (time_i - hexit_time_q);
+        hhidden_cycle_d   = hhidden_cycle_q + (cycle_q - hexit_cycle_q);
+        hhidden_instret_d = hhidden_instret_q + (instret_q - hexit_instret_q);
+      end
       if (ex_i.valid && v_q && !v_d) begin
         hexit_time_d    = time_i;
         hexit_cycle_d   = cycle_q;
         hexit_instret_d = instret_q;
       end
-      if (eret_o && !v_q && v_d && htimectl_hhae_q) begin
-        hhidden_time_d    = hhidden_time_q + (time_i - hexit_time_q);
-        hhidden_cycle_d   = hhidden_cycle_q + (cycle_q - hexit_cycle_q);
-        hhidden_instret_d = hhidden_instret_q + (instret_d - hexit_instret_q);
-      end
+      if (eret_o && !v_q && v_d && htimectl_hhae_q) resume_pending_d = 1'b1;
     end
   end
 
@@ -2755,18 +2765,24 @@ module csr_regfile
     assign scratch_en_o = 1'b0;
   end
 
-  assign time_rdata = (CVA6Cfg.RVH && v_q) ? time_i + htimedelta_q - hhidden_time_q : time_i;
+  // Guest views. While resume_pending, the guest clocks stay stopped at the exit value. That
+  // includes a read that is itself the closing commit, as hhidden_* only take the accumulate in
+  // the next cycle.
+  assign time_rdata = (CVA6Cfg.RVH && v_q) ?
+      (resume_pending_q ? hexit_time_q : time_i) + htimedelta_q - hhidden_time_q : time_i;
   assign cycle_rdata = (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64 && v_q) ?
-      cycle_q - hhidden_cycle_q : cycle_q;
+      (resume_pending_q ? hexit_cycle_q : cycle_q) - hhidden_cycle_q : cycle_q;
   assign instret_rdata = (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64 && v_q) ?
-      instret_q - hhidden_instret_q : instret_q;
+      (resume_pending_q ? hexit_instret_q : instret_q) - hhidden_instret_q :
+      instret_q;
 
   // Sstc comparators. VSTIP compares against the guest's hidden-time clock (vtime_eff), so
   // guest timers do not count hidden exit time: the clock stays frozen while HS/M runs with
-  // HHAE=1, and no VSTIP appears during a hidden exit. (Standard Sstc uses time + htimedelta.)
+  // HHAE=1 and until the first guest event after the return, and no VSTIP appears during a
+  // hidden exit. (Standard Sstc uses time + htimedelta.)
   assign henvcfg_stce = menvcfg_stce_q & henvcfg_stce_q;
-  assign vtime_eff = (!v_q && htimectl_hhae_q) ? hexit_time_q + htimedelta_q - hhidden_time_q
-                                               : time_i + htimedelta_q - hhidden_time_q;
+  assign vtime_eff = ((!v_q && htimectl_hhae_q) || resume_pending_q) ?
+      hexit_time_q + htimedelta_q - hhidden_time_q : time_i + htimedelta_q - hhidden_time_q;
   always_comb begin : mip_view
     mip_rdata = mip_q;
     if (SstcEn && menvcfg_stce_q) begin
@@ -3178,6 +3194,7 @@ module csr_regfile
         hhidden_cycle_q          <= 64'b0;
         hexit_instret_q          <= 64'b0;
         hhidden_instret_q        <= 64'b0;
+        resume_pending_q         <= 1'b0;
         menvcfg_stce_q           <= 1'b0;
         henvcfg_stce_q           <= 1'b0;
         stimecmp_q               <= '1;
@@ -3294,6 +3311,7 @@ module csr_regfile
         hhidden_cycle_q          <= hhidden_cycle_d;
         hexit_instret_q          <= hexit_instret_d;
         hhidden_instret_q        <= hhidden_instret_d;
+        resume_pending_q         <= resume_pending_d;
         menvcfg_stce_q           <= menvcfg_stce_d;
         henvcfg_stce_q           <= henvcfg_stce_d;
         stimecmp_q               <= stimecmp_d;
