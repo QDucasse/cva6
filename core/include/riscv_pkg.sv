@@ -459,6 +459,7 @@ package riscv;
     CSR_HHIDDEN_CYCLE    = 12'h6C5,
     CSR_HEXIT_INSTRET    = 12'h6C6,
     CSR_HHIDDEN_INSTRET  = 12'h6C7,
+    CSR_HEXIT_CHARGE     = 12'h6C8,
     // Machine Mode CSRs
     CSR_MSTATUS          = 12'h300,
     CSR_MISA             = 12'h301,

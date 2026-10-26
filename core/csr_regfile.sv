@@ -341,6 +341,10 @@ module csr_regfile
   logic [63:0] hhidden_cycle_q, hhidden_cycle_d;
   logic [63:0] hexit_instret_q, hexit_instret_d;
   logic [63:0] hhidden_instret_q, hhidden_instret_d;
+  // what the guest is told passed during a hidden exit: [47:0] cycles, [63:48] instret.
+  // Cleared at every exit latch, applied when the hidden window closes.
+  logic [63:0] hexit_charge_q, hexit_charge_d;
+  logic [63:0] charge_cycle, charge_instret;
   // resume_pending: set when an xRET commits with V 0->1 and HHAE=1, cleared at the first V=1
   // event (a commit or a trap), where the hidden window closes. Until then the guest clocks
   // stay stopped, so the refill after the xRET is hidden too.
@@ -688,6 +692,9 @@ module csr_regfile
         else read_access_exception = 1'b1;
         riscv::CSR_HHIDDEN_INSTRET:
         if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) csr_rdata = hhidden_instret_q[CVA6Cfg.XLEN-1:0];
+        else read_access_exception = 1'b1;
+        riscv::CSR_HEXIT_CHARGE:
+        if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) csr_rdata = hexit_charge_q[CVA6Cfg.XLEN-1:0];
         else read_access_exception = 1'b1;
         riscv::CSR_HTVAL:
         if (CVA6Cfg.RVH) csr_rdata = htval_q;
@@ -1238,6 +1245,7 @@ module csr_regfile
       hhidden_cycle_d          = hhidden_cycle_q;
       hexit_instret_d          = hexit_instret_q;
       hhidden_instret_d        = hhidden_instret_q;
+      hexit_charge_d           = hexit_charge_q;
       resume_pending_d         = resume_pending_q;
       menvcfg_stce_d           = menvcfg_stce_q;
       henvcfg_stce_d           = henvcfg_stce_q;
@@ -1723,6 +1731,13 @@ module csr_regfile
         riscv::CSR_HHIDDEN_INSTRET: begin
           if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) begin
             hhidden_instret_d = 64'(csr_wdata);
+          end else begin
+            update_access_exception = 1'b1;
+          end
+        end
+        riscv::CSR_HEXIT_CHARGE: begin
+          if (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64) begin
+            hexit_charge_d = 64'(csr_wdata);
           end else begin
             update_access_exception = 1'b1;
           end
@@ -2660,7 +2675,7 @@ module csr_regfile
     // ---------------------------
     // Latch mtime/mcycle/minstret when a trap commits with V 1->0 (to HS or M). An xRET that
     // commits with V 0->1 and HHAE=1 sets resume_pending; the hidden window closes at the first
-    // V=1 event after it, a commit or a trap, which accumulates the interval.
+    // V=1 event after it, a commit or a trap, which accumulates the interval minus the charge.
     // A trap back to HS/M before any guest commit closes the old window and latches the new
     // exit in the same cycle.
     // This comes after the CSR write logic on purpose: a hardware update in the same cycle
@@ -2672,13 +2687,14 @@ module csr_regfile
       if (resume_pending_q && (|commit_ack_i || ex_i.valid)) begin
         resume_pending_d  = 1'b0;
         hhidden_time_d    = hhidden_time_q + (time_i - hexit_time_q);
-        hhidden_cycle_d   = hhidden_cycle_q + (cycle_q - hexit_cycle_q);
-        hhidden_instret_d = hhidden_instret_q + (instret_q - hexit_instret_q);
+        hhidden_cycle_d   = hhidden_cycle_q + (cycle_q - hexit_cycle_q) - charge_cycle;
+        hhidden_instret_d = hhidden_instret_q + (instret_q - hexit_instret_q) - charge_instret;
       end
       if (ex_i.valid && v_q && !v_d) begin
         hexit_time_d    = time_i;
         hexit_cycle_d   = cycle_q;
         hexit_instret_d = instret_q;
+        hexit_charge_d  = '0;
       end
       if (eret_o && !v_q && v_d && htimectl_hhae_q) resume_pending_d = 1'b1;
     end
@@ -2765,15 +2781,17 @@ module csr_regfile
     assign scratch_en_o = 1'b0;
   end
 
-  // Guest views. While resume_pending, the guest clocks stay stopped at the exit value. That
-  // includes a read that is itself the closing commit, as hhidden_* only take the accumulate in
-  // the next cycle.
+  // Guest views. While resume_pending, the guest clocks stay stopped at the exit value plus the
+  // charge (time has no charge). That includes a read that is itself the closing commit, as
+  // hhidden_* only take the accumulate in the next cycle.
+  assign charge_cycle = {16'b0, hexit_charge_q[47:0]};
+  assign charge_instret = {48'b0, hexit_charge_q[63:48]};
   assign time_rdata = (CVA6Cfg.RVH && v_q) ?
       (resume_pending_q ? hexit_time_q : time_i) + htimedelta_q - hhidden_time_q : time_i;
   assign cycle_rdata = (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64 && v_q) ?
-      (resume_pending_q ? hexit_cycle_q : cycle_q) - hhidden_cycle_q : cycle_q;
+      (resume_pending_q ? hexit_cycle_q + charge_cycle : cycle_q) - hhidden_cycle_q : cycle_q;
   assign instret_rdata = (CVA6Cfg.RVH && CVA6Cfg.RVHiddenTime && CVA6Cfg.IS_XLEN64 && v_q) ?
-      (resume_pending_q ? hexit_instret_q : instret_q) - hhidden_instret_q :
+      (resume_pending_q ? hexit_instret_q + charge_instret : instret_q) - hhidden_instret_q :
       instret_q;
 
   // Sstc comparators. VSTIP compares against the guest's hidden-time clock (vtime_eff), so
@@ -3194,6 +3212,7 @@ module csr_regfile
         hhidden_cycle_q          <= 64'b0;
         hexit_instret_q          <= 64'b0;
         hhidden_instret_q        <= 64'b0;
+        hexit_charge_q           <= 64'b0;
         resume_pending_q         <= 1'b0;
         menvcfg_stce_q           <= 1'b0;
         henvcfg_stce_q           <= 1'b0;
@@ -3311,6 +3330,7 @@ module csr_regfile
         hhidden_cycle_q          <= hhidden_cycle_d;
         hexit_instret_q          <= hexit_instret_d;
         hhidden_instret_q        <= hhidden_instret_d;
+        hexit_charge_q           <= hexit_charge_d;
         resume_pending_q         <= resume_pending_d;
         menvcfg_stce_q           <= menvcfg_stce_d;
         henvcfg_stce_q           <= henvcfg_stce_d;
