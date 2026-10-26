@@ -105,6 +105,7 @@ for target in "${htime_target}" "${base_target}" "${noscratch_target}"; do
     run_htime "${target}" rv64h-p-htime-hvti
     run_htime "${target}" rv64h-p-htime-introspect
     run_htime "${target}" rv64h-p-htime-close
+    run_htime "${target}" rv64h-p-htime-runahead
     run_freeze "${target}"
   else
     run_htime "${target}" rv64h-p-htime-time-off

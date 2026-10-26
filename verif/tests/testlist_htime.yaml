@@ -80,6 +80,12 @@ testlist:
     gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
     asm_tests: <path_var>/custom/htime/htime_close.S
 
+  - test: rv64h-p-htime-runahead
+    iterations: 1
+    path_var: TESTS_PATH
+    gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/"
+    asm_tests: <path_var>/custom/htime/htime_runahead.S
+
   # Hidden freeze. Checked by the testbench freeze monitor (cva6_freeze_monitor.sv), which checks
   # all structures by default: sim_args +freeze_mon_expect is the expected sequence of windows, each
   # as its end reason followed by +<what> for each allowed change. htime.sh passes sim_args.
