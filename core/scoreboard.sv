@@ -87,7 +87,9 @@ module scoreboard #(
     // Issue pointer - RVFI
     output logic [ CVA6Cfg.NrIssuePorts-1:0][CVA6Cfg.TRANS_ID_BITS-1:0] rvfi_issue_pointer_o,
     // Commit pointer - RVFI
-    output logic [CVA6Cfg.NrCommitPorts-1:0][CVA6Cfg.TRANS_ID_BITS-1:0] rvfi_commit_pointer_o
+    output logic [CVA6Cfg.NrCommitPorts-1:0][CVA6Cfg.TRANS_ID_BITS-1:0] rvfi_commit_pointer_o,
+    // Issued instructions not yet committed (hidden-time resume hold) - CSR_REGFILE
+    output logic [7:0] sb_count_o
 );
 
   // this is the FIFO struct of the issue queue
@@ -317,6 +319,11 @@ module scoreboard #(
   //RVFI
   assign rvfi_issue_pointer_o  = issue_pointer[CVA6Cfg.NrIssuePorts-1:0];
   assign rvfi_commit_pointer_o = commit_pointer_q;
+
+  always_comb begin
+    sb_count_o = '0;
+    for (int unsigned i = 0; i < CVA6Cfg.NR_SB_ENTRIES; i++) sb_count_o += 8'(mem_q[i].issued);
+  end
 
   //pragma translate_off
   initial begin

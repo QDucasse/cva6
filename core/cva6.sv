@@ -653,6 +653,9 @@ module cva6
   // Hidden freeze (RVHiddenFreeze): caches, TLBs and predictors frozen during a VM exit
   logic freeze_csr;
   logic scratch_en_csr;  // scratch structures looked up
+  // Hidden-time resume hold: instructions fetched ahead of the commit head
+  logic [7:0] iq_count_if, sb_count_issue;
+  logic [CVA6Cfg.VLEN-1:0] fetch_vaddr_if;
   logic flush_unissued_instr_ctrl_id;
   logic flush_ctrl_if;
   logic flush_ctrl_id;
@@ -739,7 +742,9 @@ module cva6
       .icache_dreq_i      (icache_dreq_cache_if),
       .fetch_entry_o      (fetch_entry_if_id),
       .fetch_entry_valid_o(fetch_valid_if_id),
-      .fetch_entry_ready_i(fetch_ready_id_if)
+      .fetch_entry_ready_i(fetch_ready_id_if),
+      .iq_count_o         (iq_count_if),
+      .fetch_vaddr_o      (fetch_vaddr_if)
   );
 
   // ---------
@@ -984,6 +989,7 @@ module cva6
       //RVFI
       .rvfi_issue_pointer_o (rvfi_issue_pointer),
       .rvfi_commit_pointer_o(rvfi_commit_pointer),
+      .sb_count_o           (sb_count_issue),
       .rvfi_rs1_o           (rvfi_rs1),
       .rvfi_rs2_o           (rvfi_rs2),
       .orig_instr_aes_bits  (orig_instr_aes)

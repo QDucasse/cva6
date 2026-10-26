@@ -67,7 +67,11 @@ module frontend
     // Handshake's valid between fetch and decode - ID_STAGE
     output logic [CVA6Cfg.NrIssuePorts-1:0] fetch_entry_valid_o,
     // Handshake's ready between fetch and decode - ID_STAGE
-    input logic [CVA6Cfg.NrIssuePorts-1:0] fetch_entry_ready_i
+    input logic [CVA6Cfg.NrIssuePorts-1:0] fetch_entry_ready_i,
+    // Instructions held in the instruction queue (hidden-time resume hold) - CSR_REGFILE
+    output logic [7:0] iq_count_o,
+    // Next fetch address, registered (hidden-time resume hold) - CSR_REGFILE
+    output logic [CVA6Cfg.VLEN-1:0] fetch_vaddr_o
 );
 
   localparam type bht_update_t = struct packed {
@@ -595,7 +599,12 @@ module frontend
       .replay_addr_o      (replay_addr),
       .fetch_entry_o      (fetch_entry_o),         // to back-end
       .fetch_entry_valid_o(fetch_entry_valid_o),   // to back-end
-      .fetch_entry_ready_i(fetch_entry_ready_i)    // to back-end
+      .fetch_entry_ready_i(fetch_entry_ready_i),   // to back-end
+      .count_o            (iq_count_o)
   );
+
+  // npc_q, not the fetch address: that one takes a branch prediction in the same cycle, which
+  // depends on the queue draining, which the resume hold's issue gate drives.
+  assign fetch_vaddr_o = npc_q;
 
 endmodule

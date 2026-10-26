@@ -166,6 +166,8 @@ module issue_stage
     output logic [CVA6Cfg.NrIssuePorts-1:0][CVA6Cfg.TRANS_ID_BITS-1:0] rvfi_issue_pointer_o,
     // Information dedicated to RVFI - RVFI
     output logic [CVA6Cfg.NrCommitPorts-1:0][CVA6Cfg.TRANS_ID_BITS-1:0] rvfi_commit_pointer_o,
+    // Issued instructions not yet committed (hidden-time resume hold) - CSR_REGFILE
+    output logic [7:0] sb_count_o,
     // Information dedicated to RVFI - RVFI
     output logic [CVA6Cfg.NrIssuePorts-1:0][CVA6Cfg.XLEN-1:0] rvfi_rs1_o,
     // Information dedicated to RVFI - RVFI
@@ -236,7 +238,8 @@ module issue_stage
       .x_we_i,
       .x_rd_i,
       .rvfi_issue_pointer_o,
-      .rvfi_commit_pointer_o
+      .rvfi_commit_pointer_o,
+      .sb_count_o
   );
 
   // ---------------------------------------------------------

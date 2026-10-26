@@ -87,7 +87,9 @@ module instr_queue
     // Handshake’s valid with ID_STAGE - ID_STAGE
     output logic [CVA6Cfg.NrIssuePorts-1:0] fetch_entry_valid_o,
     // Handshake’s ready with ID_STAGE - ID_STAGE
-    input logic [CVA6Cfg.NrIssuePorts-1:0] fetch_entry_ready_i
+    input logic [CVA6Cfg.NrIssuePorts-1:0] fetch_entry_ready_i,
+    // Instructions held, all lanes (hidden-time resume hold) - CSR_REGFILE
+    output logic [7:0] count_o
 );
 
   // Calculate next index based on whether superscalar is enabled or not.
@@ -111,6 +113,7 @@ module instr_queue
   logic [CVA6Cfg.INSTR_PER_FETCH-1:0] pop_instr;
   logic [CVA6Cfg.INSTR_PER_FETCH-1:0] instr_queue_full;
   logic [CVA6Cfg.INSTR_PER_FETCH-1:0] instr_queue_empty;
+  logic [CVA6Cfg.INSTR_PER_FETCH-1:0][$clog2(ariane_pkg::FETCH_FIFO_DEPTH)-1:0] instr_queue_usage;
   logic                               instr_overflow;
   // address queue
   logic [           CVA6Cfg.VLEN-1:0] address_out;
@@ -484,13 +487,22 @@ module instr_queue
         .testmode_i(1'b0),
         .full_o    (instr_queue_full[i]),
         .empty_o   (instr_queue_empty[i]),
-        .usage_o   (),
+        .usage_o   (instr_queue_usage[i]),
         .data_i    (instr_data_in[i]),
         .push_i    (push_instr_fifo[i]),
         .data_o    (instr_data_out[i]),
         .pop_i     (pop_instr[i])
     );
   end
+  // usage_o wraps to 0 when a FIFO is full: count a full one as DEPTH. Each instruction sits in
+  // one lane, so the sum over lanes is the number of instructions held.
+  always_comb begin
+    count_o = '0;
+    for (int unsigned i = 0; i < CVA6Cfg.INSTR_PER_FETCH; i++) begin
+      count_o += instr_queue_full[i] ? 8'(ariane_pkg::FETCH_FIFO_DEPTH) : 8'(instr_queue_usage[i]);
+    end
+  end
+
   // or reduce and check whether we are retiring a taken branch (might be that the corresponding)
   // fifo is full.
   always_comb begin
