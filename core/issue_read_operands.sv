@@ -869,7 +869,13 @@ module issue_read_operands
         if (!stall_raw[i]) begin
           issue_ack[i] = 1'b1;
         end
-        if (issue_instr_i[i].ex.valid) begin
+        // An instruction carrying an exception skips the RAW stall: it does not execute. Except,
+        // with hidden time, an interrupt on an instruction that waits for a CSR read's result:
+        // that one is not forwarded, so the instruction would stall until the read commits, and
+        // a trap that skips the stall starts the hidden exit early (the guest gains the stall).
+        // On a forwarded operand the skip matches native timing, so it stays.
+        if (issue_instr_i[i].ex.valid && !(CVA6Cfg.RVHiddenTime && issue_instr_i[i].ex.cause[CVA6Cfg.XLEN-1] &&
+            ((rs1_has_raw[i] && !rs1_is_not_csr[i]) || (rs2_has_raw[i] && !rs2_is_not_csr[i])))) begin
           issue_ack[i] = 1'b1;
         end
       end
